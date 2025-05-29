@@ -1,0 +1,2163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Quantum Data Lens</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-treemap@2.3.0/dist/chartjs-chart-treemap.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-funnel@4.0.0/dist/chart.funnel.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* Tailwind gray-100 */
+            color: #1f2937; /* Tailwind gray-800 */
+        }
+
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background-color: #9ca3af; /* Tailwind gray-400 */
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background-color: #e5e7eb; /* Tailwind gray-200 */
+            border-radius: 4px;
+        }
+
+        /* Chart.js canvas responsiveness */
+        .chart-canvas-container canvas { /* Target canvas within specific containers */
+            max-width: 100%;
+            height: auto !important;
+        }
+
+
+        /* Modal base styles */
+        .modal {
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .modal.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+        .modal-dialog {
+            transition: transform 0.3s ease;
+            transform: translateY(-20px);
+        }
+        .modal:not(.hidden) .modal-dialog {
+            transform: translateY(0);
+        }
+
+        /* General Modal content area for scrolling */
+        .modal-content-area {
+            max-height: 60vh; /* Default max-height for smaller modals */
+            overflow-y: auto;
+            overflow-x: auto;
+        }
+
+        /* Override for larger modals to use more screen height */
+        #aiVizResultModal .modal-content-area,
+        #resultsModal .modal-content-area,
+        #configuredVizResultModal .modal-content-area { /* Added new modal */
+            max-height: calc(90vh - 200px); /* Adjust 200px based on header/footer height in modal, increased for download button space */
+        }
+
+
+        /* Enhanced Spinner */
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.2);
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            border-left-color: #3b82f6; /* Tailwind blue-500 */
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Loading Overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0,0,0,0.65);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .loading-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        .loading-overlay p {
+            margin-top: 1rem;
+            font-size: 1.125rem; /* text-lg */
+            color: white;
+            font-weight: 500;
+        }
+
+        /* Custom Notification/Alert System */
+        #notification-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1050;
+            width: 350px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .notification {
+            padding: 1rem 1.5rem;
+            border-radius: 0.5rem; /* rounded-lg */
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06); /* shadow-md */
+            opacity: 0;
+            transform: translateX(100%);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+        }
+        .notification.show {
+            opacity: 1;
+            transform: translateX(0);
+        }
+        .notification.success { background-color: #10b981; /* Tailwind green-500 */ }
+        .notification.error { background-color: #ef4444; /* Tailwind red-500 */ }
+        .notification.info { background-color: #3b82f6; /* Tailwind blue-500 */ }
+        .notification.warning { background-color: #f59e0b; /* Tailwind amber-500 */ }
+        .notification-message { flex-grow: 1; }
+        .notification-close {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 1.2rem;
+            cursor: pointer;
+            margin-left: 1rem;
+            padding: 0.25rem;
+        }
+        .notification-icon { margin-right: 0.75rem; font-size: 1.25rem; }
+
+        /* Styling for disabled buttons */
+        button:disabled, input[type="button"]:disabled, input[type="submit"]:disabled {
+            background-color: #d1d5db !important; /* Tailwind gray-300 */
+            color: #6b7280 !important; /* Tailwind gray-500 */
+            cursor: not-allowed !important;
+            box-shadow: none !important;
+        }
+         button:disabled:hover {
+             background-color: #d1d5db !important;
+        }
+
+        #companyLogo {
+            max-height: 48px;
+        }
+
+        /* --- Enhanced Markdown Content Styling --- */
+        .markdown-content {
+            font-family: 'Inter', sans-serif;
+            line-height: 1.7;
+            color: #374151;
+            font-size: 0.95rem;
+        }
+        .markdown-content h1, .markdown-content h2, .markdown-content h3, .markdown-content h4, .markdown-content h5, .markdown-content h6 {
+            margin-top: 1.8em; margin-bottom: 0.8em; font-weight: 600; line-height: 1.3; color: #111827;
+        }
+        .markdown-content h1:first-child, .markdown-content h2:first-child, .markdown-content h3:first-child { margin-top: 0.5em; }
+        .markdown-content h1 { font-size: 1.75rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.3em;}
+        .markdown-content h2 { font-size: 1.5rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.3em;}
+        .markdown-content h3 { font-size: 1.25rem; }
+        .markdown-content h4 { font-size: 1.1rem; color: #1f2937; }
+        .markdown-content p { margin-bottom: 1.2em; }
+        .markdown-content ul, .markdown-content ol { padding-left: 1.5rem; margin-bottom: 1.2em; }
+        .markdown-content li { margin-bottom: 0.5em; }
+        .markdown-content ul ul, .markdown-content ol ol, .markdown-content ul ol, .markdown-content ol ul { margin-top: 0.5em; margin-bottom: 0.5em; }
+        .markdown-content table {
+            border-collapse: collapse; max-width: 100%; margin: 1.5em 0; font-size: 0.9rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #d1d5db; display: table;
+        }
+        .markdown-content table th, .markdown-content table td {
+            padding: 0.75rem 1rem; border: 1px solid #e5e7eb; text-align: left; vertical-align: top;
+        }
+        .markdown-content table td.text-right { text-align: right; }
+        .markdown-content table td.text-center { text-align: center; }
+        .markdown-content table th { background-color: #f9fafb; font-weight: 600; color: #1f2937; white-space: nowrap; }
+        .markdown-content table tr:nth-child(even) td { background-color: #f9fafb; }
+        .markdown-content table tr:hover td { background-color: #f3f4f6; }
+        .markdown-content pre {
+            background-color: #1f2937; color: #d1d5db; border-radius: 0.375rem; padding: 1rem;
+            overflow-x: auto; margin: 1.5em 0; font-size: 0.875rem; line-height: 1.6;
+        }
+        .markdown-content code {
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 0.875em; background-color: #e5e7eb; color: #be185d;
+            padding: 0.2em 0.4em; border-radius: 0.25rem; word-break: break-word;
+        }
+        .markdown-content pre code { background-color: transparent; color: inherit; padding: 0; border-radius: 0; font-size: 1em; }
+        .markdown-content blockquote {
+            margin: 1.5em 0; padding: 0.5em 1em; border-left: 4px solid #9ca3af;
+            background-color: #f9fafb; color: #4b5563;
+        }
+        .markdown-content blockquote p:last-child { margin-bottom: 0; }
+        .markdown-content hr { border: none; border-top: 1px solid #e5e7eb; margin: 2em 0; }
+        .markdown-content img { max-width: 100%; height: auto; border-radius: 0.375rem; margin: 1em 0; }
+        
+        /* Class for generated HTML tables in chart area */
+        .generated-html-table {
+             width: 100%;
+             border-collapse: collapse;
+             margin-top: 10px;
+             font-size: 0.85rem;
+             box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+        }
+        .generated-html-table th, .generated-html-table td {
+            border: 1px solid #d1d5db; /* gray-300 */
+            padding: 6px 10px;
+            text-align: left;
+        }
+        .generated-html-table th {
+            background-color: #f3f4f6; /* gray-100 */
+            font-weight: 600;
+        }
+        .generated-html-table tr:nth-child(even) td {
+            background-color: #f9fafb; /* gray-50 */
+        }
+
+
+        /* --- Enhance Prompt/Input Styles --- */
+        .enhance-btn {
+            cursor: pointer;
+            transition: background-color 0.15s ease-in-out;
+        }
+        .enhance-btn i {
+            margin-right: 3px;
+        }
+        .enhancement-display p {
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem; /* text-sm */
+            color: #374151; /* Tailwind gray-700 */
+        }
+        .enhancement-display p strong {
+            color: #1f2937; /* Tailwind gray-800 */
+            font-weight: 600; /* semibold */
+        }
+        .enhancement-display .original-text-display {
+            background-color: #f3f4f6; /* Tailwind gray-100 */
+            padding: 0.5rem;
+            border-radius: 0.25rem; /* rounded-sm */
+            border: 1px solid #e5e7eb; /* Tailwind gray-200 */
+            word-wrap: break-word;
+            white-space: pre-wrap; /* To respect newlines in SQL/prompts */
+        }
+        .enhancement-display .suggested-text-display {
+            background-color: #ecfdf5; /* Tailwind green-50 */
+            padding: 0.5rem;
+            border-radius: 0.25rem; /* rounded-sm */
+            border: 1px solid #a7f3d0; /* Tailwind green-200 */
+            color: #065f46; /* Tailwind green-800 */
+            word-wrap: break-word;
+            white-space: pre-wrap; /* To respect newlines in SQL/prompts */
+        }
+        .enhancement-display .buttons button {
+            font-size: 0.875rem; /* text-sm */
+            padding: 0.375rem 0.75rem; /* py-1.5 px-3 */
+            border-radius: 0.375rem; /* rounded-md */
+            margin-right: 0.5rem;
+            font-weight: 500; /* medium */
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); /* shadow-sm */
+        }
+        /* Ensure chart containers in modals are responsive */
+        #configuredVizChartContainer, #aiVizChartContainer {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); /* Responsive grid, increased minwidth */
+            gap: 1.5rem; /* Increased gap */
+            padding: 1rem; /* Add some padding inside the container */
+            flex-grow: 1; /* Make chart container take available space */
+        }
+        .chart-item-wrapper { /* New wrapper for individual chart + its download button */
+            position: relative;
+            min-height: 300px; /* Min height for chart */
+            background-color: white;
+            padding: 1rem; /* p-4 */
+            border-radius: 0.5rem; /* rounded-lg */
+            border: 1px solid #e5e7eb; /* border-gray-200 */
+            box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.05); /* shadow-md */
+            display: flex; /* Use flex to help position content */
+            flex-direction: column; /* Stack chart and potential elements */
+            overflow: hidden; 
+        }
+        .individual-chart-download-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.4);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.2s ease;
+            z-index: 10; /* Ensure it's above the chart */
+        }
+        .individual-chart-download-btn:hover {
+            background-color: rgba(0, 0, 0, 0.6);
+        }
+        .chart-canvas-wrapper { /* Wrapper specifically for the canvas/image to allow download button to overlay */
+            flex-grow: 1; /* Allow canvas to take available space */
+            position: relative; /* For positioning download button */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: auto; /* Add scroll for oversized content like tables or very large single charts */
+        }
+        .y-axis-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0.25rem; /* space between y-axis items */
+        }
+        .y-axis-item label {
+            margin-left: 0.5rem;
+            margin-right: 0.5rem;
+            flex-shrink: 0; /* Prevent label from shrinking */
+        }
+        .y-axis-item select.aggregation-select {
+            font-size: 0.875rem; /* text-sm */
+            padding: 0.25rem 0.5rem; /* py-1 px-2 */
+            border-radius: 0.25rem; /* rounded-sm */
+            border: 1px solid #d1d5db; /* Tailwind gray-300 */
+            background-color: #f9fafb; /* Tailwind gray-50 */
+            max-width: 150px; /* Limit width of select */
+        }
+        /* Custom class for feature color text */
+        .text-feature {
+            color: #ff6363;
+        }
+        /* Custom class for feature color button (already exists but ensure it's comprehensive) */
+        .bg-custom {
+            background-color: #ff6363;
+        }
+        .bg-custom:hover {
+            background-color: #fe4f4f; /* Slightly darker hover for #ff6363 */
+        }
+
+    </style>
+</head>
+<body class="bg-gray-100">
+
+    <div id="notification-container"></div>
+
+    <div id="loginOverlay" class="fixed inset-0 bg-gradient-to-br from-slate-900 to-slate-700 z-[100] flex items-center justify-center p-4 transition-opacity duration-300 ease-in-out">
+        <div class="w-full max-w-md p-8 bg-white rounded-xl shadow-2xl space-y-8 transform transition-all duration-300 ease-in-out scale-95 opacity-0" id="loginBox">
+            <div class="text-center">
+                <img src="image.jpg" alt="Company Logo" class="mx-auto h-12 mb-4" onerror="this.src='https://placehold.co/100x48/cccccc/ffffff?text=Logo'; this.onerror=null;"> <h1 class="text-3xl font-extrabold text-gray-900">Quantum Data Lens</h1>
+            </div>
+
+            <form id="loginForm" class="space-y-6">
+                <div>
+                    <label for="email" class="block text-sm font-medium text-gray-700 sr-only">Email Address</label>
+                    <input type="email" id="email" name="email" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 placeholder-gray-400" placeholder="Email address" value="user@example.com">
+                </div>
+
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-700 sr-only">Password</label>
+                    <input type="password" id="password" name="password" required class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 placeholder-gray-400" placeholder="Password" value="password">
+                </div>
+
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <input id="remember" name="remember" type="checkbox" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded">
+                        <label for="remember" class="ml-2 block text-sm text-gray-700">Remember me</label>
+                    </div>
+                    <div class="text-sm">
+                        <a href="#" class="font-medium text-blue-600 hover:text-blue-500">Forgot password?</a>
+                    </div>
+                </div>
+
+                <button type="submit" class="w-full flex justify-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-150 ease-in-out">
+                    Sign in
+                </button>
+            </form>
+
+            <div class="mt-6 text-center text-sm">
+                <p class="text-gray-600">
+                    Don't have an account?
+                    <a href="#" class="font-medium text-blue-600 hover:text-blue-500">Sign up</a>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="spinner"></div>
+        <p id="loadingMessage" class="ml-3 text-white text-lg">Processing...</p>
+    </div>
+
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8">
+        <header class="mb-8 flex justify-between items-center">
+            <div class="flex items-center space-x-4">
+                <img src="image.jpg" alt="Company Logo" id="companyLogo" onerror="this.src='https://placehold.co/150x48/cccccc/ffffff?text=Company+Logo'; this.onerror=null;"> <h1 class="text-3xl font-bold text-gray-800">Quantum Data Lens</h1>
+                <svg class="h-10 w-10 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+            </div>
+            <div class="flex items-center space-x-4">
+                <span id="welcomeMessage" class="text-sm text-gray-700 font-medium hidden"></span>
+                <style>
+                /* Add this in your <head> or CSS file */
+                .bg-customs { /* This is for logout button, distinct from feature color */
+                    background-color: #be1919;
+                }
+                .bg-customs:hover {
+                    background-color: #9b1313; /* Optional slightly darker hover */
+                }
+                </style>
+                <button id="logoutButton" class="bg-customs text-white font-medium py-2 px-5 rounded-lg shadow-md hover:shadow-lg transition duration-150 flex items-center space-x-2 hidden">
+                    <i class="fas fa-sign-out-alt"></i>
+                    <span>Logout</span>
+                </button>
+            </div>
+        </header>
+
+        <section id="fileUploadSection" class="mb-8 p-6 bg-white rounded-xl shadow-lg">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-6 border-b pb-3">Upload Data and Process</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-10 items-start">
+                <div>
+                    <label for="fileInput" class="block text-sm font-medium text-gray-700 mb-1">Upload CSV/Excel File</label>
+                    <input type="file" id="fileInput" accept=".csv, .xls, .xlsx" class="block w-full text-sm text-gray-700 border border-gray-300 rounded-lg cursor-pointer bg-gray-50
+                        file:mr-4 file:py-3 file:px-5 file:rounded-l-lg file:border-0
+                        file:text-sm file:font-semibold
+                        file:bg-blue-600 file:text-white
+                        hover:file:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
+                    "/>
+                    <span id="fileNameLabel" class="mt-2 text-sm text-gray-600 truncate block" title="No file chosen">No file chosen</span>
+                </div>
+                <div class="md:mt-5">
+                     <button id="openPostgresModalButton" class="w-full sm:w-auto bg-teal-500 hover:bg-teal-600 text-white font-bold py-3 px-5 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out flex items-center justify-center space-x-2">
+                        <i class="fas fa-database"></i>
+                        <span>Import from PostgreSQL</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="mt-8 pt-6 border-t flex flex-col sm:flex-row sm:space-x-3 space-y-3 sm:space-y-0">
+                <button id="analyzeDataButton" disabled class="w-full sm:w-auto bg-custom text-white font-bold py-2.5 px-6 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out flex items-center justify-center space-x-2">
+                <i class="fas fa-cogs"></i>
+                <span>Analyze Data</span>
+                </button>
+                <button id="sqlQueryButton" disabled class="w-full sm:w-auto bg-custom text-white font-bold py-2.5 px-6 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out flex items-center justify-center space-x-2">
+                    <i class="fas fa-database"></i>
+                    <span>SQL Query</span>
+                </button>
+                <button id="askQuestionButton" disabled class="w-full sm:w-auto bg-custom text-white font-bold py-2.5 px-6 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out flex items-center justify-center space-x-2">
+                    <i class="fas fa-question-circle"></i>
+                    <span>Ask Question</span>
+                </button>
+                <button id="createVizButton" disabled class="w-full sm:w-auto bg-custom text-white font-bold py-2.5 px-6 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out flex items-center justify-center space-x-2">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Visualization</span>
+                </button>
+                <button id="aiVizButton" disabled class="w-full sm:w-auto bg-custom text-white font-bold py-2.5 px-6 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out flex items-center justify-center space-x-2">
+                    <i class="fas fa-robot"></i>
+                    <span>AI Visualization</span>
+                </button>
+            </div>
+        </section>
+
+        <div id="postgresModal" class="modal fixed inset-0 bg-gray-800 bg-opacity-75 overflow-y-auto h-full w-full flex items-center justify-center hidden z-50 p-4">
+            <div class="modal-dialog relative mx-auto p-6 sm:p-8 border w-full max-w-lg shadow-2xl rounded-xl bg-white">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-2xl font-semibold text-gray-800 flex items-center"><i class="fas fa-database mr-3 text-feature"></i>Import from PostgreSQL</h3>
+                    <button id="closePostgresModalButton" class="text-gray-500 hover:text-gray-700 transition duration-150 p-1 rounded-full hover:bg-gray-200">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+                <div class="space-y-5">
+                    <div>
+                        <label for="postgresSchemaSelect" class="block text-md font-medium text-gray-700 mb-1">Schema:</label>
+                        <select id="postgresSchemaSelect" class="mt-1 block w-full py-2.5 px-3 border border-gray-300 bg-white rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[#ff6363] focus:border-[#ff6363] sm:text-sm transition duration-150">
+                            <option value="">Loading schemas...</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="postgresTableSelect" class="block text-md font-medium text-gray-700 mb-1">Table:</label>
+                        <select id="postgresTableSelect" disabled class="mt-1 block w-full py-2.5 px-3 border border-gray-300 bg-white rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[#ff6363] focus:border-[#ff6363] sm:text-sm transition duration-150">
+                            <option value="">Select a schema first</option>
+                        </select>
+                    </div>
+                    <p id="postgresError" class="text-sm text-red-600 hidden"></p>
+                </div>
+                <div class="mt-8 text-right">
+                    <button id="importTableButton" disabled class="bg-custom text-white font-bold py-2.5 px-8 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out flex items-center justify-center space-x-2">
+                        <i class="fas fa-file-import"></i>
+                        <span>Import Table</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="configModal" class="modal fixed inset-0 bg-gray-800 bg-opacity-75 overflow-y-auto h-full w-full flex items-center justify-center hidden z-50 p-4">
+            <div class="modal-dialog relative mx-auto p-6 sm:p-8 border w-full max-w-2xl shadow-2xl rounded-xl bg-white">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-2xl font-semibold text-gray-800 flex items-center"><i class="fas fa-chart-pie mr-3 text-feature"></i>Configure Visualization</h3>
+                    <button id="closeConfigModalButton" class="text-gray-500 hover:text-gray-700 transition duration-150 p-1 rounded-full hover:bg-gray-200">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+                <div class="space-y-6">
+                    <div>
+                        <label class="block text-md font-medium text-gray-700 mb-2">Chart Type(s):</label>
+                        <div id="chartTypeContainer" class="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                            <div><label class="inline-flex items-center space-x-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer w-full border border-gray-200"><input type="checkbox" value="bar" class="form-checkbox h-5 w-5 rounded text-feature border-gray-300 focus:ring-[#ff6363]"> <span class="text-gray-700">Bar Chart</span></label></div>
+                            <div><label class="inline-flex items-center space-x-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer w-full border border-gray-200"><input type="checkbox" value="line" class="form-checkbox h-5 w-5 rounded text-feature border-gray-300 focus:ring-[#ff6363]"> <span class="text-gray-700">Line Chart</span></label></div>
+                            <div><label class="inline-flex items-center space-x-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer w-full border border-gray-200"><input type="checkbox" value="scatter" class="form-checkbox h-5 w-5 rounded text-feature border-gray-300 focus:ring-[#ff6363]"> <span class="text-gray-700">Scatter</span></label></div>
+                            <div><label class="inline-flex items-center space-x-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer w-full border border-gray-200"><input type="checkbox" value="pie" class="form-checkbox h-5 w-5 rounded text-feature border-gray-300 focus:ring-[#ff6363]"> <span class="text-gray-700">Pie Chart</span></label></div>
+                            <div><label class="inline-flex items-center space-x-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer w-full border border-gray-200"><input type="checkbox" value="doughnut" class="form-checkbox h-5 w-5 rounded text-feature border-gray-300 focus:ring-[#ff6363]"> <span class="text-gray-700">Doughnut</span></label></div>
+                            <div><label class="inline-flex items-center space-x-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer w-full border border-gray-200"><input type="checkbox" value="polarArea" class="form-checkbox h-5 w-5 rounded text-feature border-gray-300 focus:ring-[#ff6363]"> <span class="text-gray-700">Polar Area</span></label></div>
+                            <div><label class="inline-flex items-center space-x-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer w-full border border-gray-200"><input type="checkbox" value="table" class="form-checkbox h-5 w-5 rounded text-feature border-gray-300 focus:ring-[#ff6363]"> <span class="text-gray-700">Table</span></label></div>
+                            <div><label class="inline-flex items-center space-x-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer w-full border border-gray-200"><input type="checkbox" value="matrix" class="form-checkbox h-5 w-5 rounded text-feature border-gray-300 focus:ring-[#ff6363]"> <span class="text-gray-700">Matrix</span></label></div>
+                            <div><label class="inline-flex items-center space-x-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer w-full border border-gray-200"><input type="checkbox" value="ribbon" class="form-checkbox h-5 w-5 rounded text-feature border-gray-300 focus:ring-[#ff6363]"> <span class="text-gray-700">Ribbon</span></label></div>
+                            <div><label class="inline-flex items-center space-x-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer w-full border border-gray-200"><input type="checkbox" value="waterfall" class="form-checkbox h-5 w-5 rounded text-feature border-gray-300 focus:ring-[#ff6363]"> <span class="text-gray-700">Waterfall</span></label></div>
+                            <div><label class="inline-flex items-center space-x-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer w-full border border-gray-200"><input type="checkbox" value="funnel" class="form-checkbox h-5 w-5 rounded text-feature border-gray-300 focus:ring-[#ff6363]"> <span class="text-gray-700">Funnel</span></label></div>
+                            <div><label class="inline-flex items-center space-x-2 p-2 rounded-md hover:bg-gray-100 cursor-pointer w-full border border-gray-200"><input type="checkbox" value="treemap" class="form-checkbox h-5 w-5 rounded text-feature border-gray-300 focus:ring-[#ff6363]"> <span class="text-gray-700">Treemap</span></label></div>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="xAxisSelect" class="block text-md font-medium text-gray-700 mb-1">X-axis Column:</label>
+                        <select id="xAxisSelect" class="mt-1 block w-full py-2.5 px-3 border border-gray-300 bg-white rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[#ff6363] focus:border-[#ff6363] sm:text-sm transition duration-150">
+                            <option value="" disabled selected>Select X-axis</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-md font-medium text-gray-700 mb-1">Y-axis Column(s) & Aggregation:</label>
+                        <div id="yAxisCheckboxContainer" class="mt-1 block w-full max-h-48 overflow-y-auto p-3 border border-gray-300 bg-white rounded-lg shadow-sm space-y-1">
+                            <!-- Example structure:
+                            <div class="y-axis-item">
+                                <input type="checkbox" id="yCheckbox-example" value="example" class="form-checkbox h-4 w-4 rounded text-feature border-gray-300 focus:ring-[#ff6363] transition duration-150">
+                                <label for="yCheckbox-example" class="text-sm text-gray-700 cursor-pointer">Example Column</label>
+                                <select class="aggregation-select ml-auto hidden">...</select>
+                            </div>
+                             -->
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-8 text-right">
+                    <button id="visualizeButton" disabled class="bg-custom text-white font-bold py-2.5 px-8 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out flex items-center justify-center space-x-2">
+                        <i class="fas fa-eye"></i>
+                        <span>Visualize</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="askQuestionModal" class="modal fixed inset-0 bg-gray-800 bg-opacity-75 overflow-y-auto h-full w-full flex items-center justify-center hidden z-50 p-4">
+            <div class="modal-dialog relative mx-auto p-6 sm:p-8 border w-full max-w-xl shadow-2xl rounded-xl bg-white">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-2xl font-semibold text-gray-800 flex items-center"><i class="fas fa-question-circle mr-3 text-feature"></i>Ask a Question About Your Data</h3>
+                    <button id="closeAskModalButton" class="text-gray-500 hover:text-gray-700 transition duration-150 p-1 rounded-full hover:bg-gray-200">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+                <div class="space-y-5">
+                    <div>
+                        <div class="relative">
+                            <textarea id="questionInput" rows="4" class="mt-1 block w-full py-2.5 px-3 border border-gray-300 bg-white rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[#ff6363] focus:border-[#ff6363] sm:text-sm transition duration-150" placeholder="Enter your question about the data"></textarea>
+                            <button id="enhanceQuestionBtn" class="enhance-btn absolute bottom-2 right-2 bg-custom text-white text-xs font-semibold py-1 px-2 rounded-md shadow-sm" title="Enhance Question">
+                                <i class="fas fa-magic"></i> Enhance
+                            </button>
+                        </div>
+                        <div id="questionEnhanceArea" class="enhancement-display mt-3 p-3 border border-gray-200 rounded-md bg-gray-50 hidden"></div>
+                    </div>
+                </div>
+                <div class="mt-8 text-right">
+                    <button id="submitQuestionButton" class="bg-custom text-white font-bold py-2.5 px-8 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out flex items-center justify-center space-x-2">
+                        <i class="fas fa-paper-plane"></i>
+                        <span>Submit Question</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="resultsModal" class="modal fixed inset-0 bg-gray-800 bg-opacity-75 overflow-y-auto h-full w-full flex items-center justify-center hidden z-50 p-4">
+            <div class="modal-dialog relative mx-auto p-6 sm:p-8 border w-[95vw] max-w-[95vw] h-[90vh] max-h-[90vh] shadow-2xl rounded-xl bg-white flex flex-col">
+                <div class="flex justify-between items-center mb-5 flex-shrink-0">
+                    <h3 id="resultsModalTitle" class="text-2xl font-semibold text-gray-800">Result</h3>
+                    <button id="closeResultsModalButton" class="text-gray-500 hover:text-gray-700 transition duration-150 p-1 rounded-full hover:bg-gray-200">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+                <div id="resultsModalContentArea" class="modal-content-area bg-gray-50 p-4 rounded-lg border border-gray-200 flex-grow overflow-auto">
+                    <div id="resultsModalText" class="text-sm text-gray-700"></div>
+                </div>
+                 <div class="mt-6 text-right flex-shrink-0">
+                    <button id="downloadResultButton" class="hidden bg-custom text-white font-semibold py-2 px-5 rounded-lg shadow-md hover:shadow-lg transition duration-150 items-center space-x-2">
+                        <i class="fas fa-download"></i>
+                        <span>Download Result</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="aiVizModal" class="modal fixed inset-0 bg-gray-800 bg-opacity-75 overflow-y-auto h-full w-full flex items-center justify-center hidden z-50 p-4">
+            <div class="modal-dialog relative mx-auto p-6 sm:p-8 border w-full max-w-xl shadow-2xl rounded-xl bg-white">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-2xl font-semibold text-gray-800 flex items-center"><i class="fas fa-robot mr-3 text-feature"></i>AI Visualization</h3>
+                    <button id="closeAiVizModalButton" class="text-gray-500 hover:text-gray-700 transition duration-150 p-1 rounded-full hover:bg-gray-200">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+                <div class="space-y-5">
+                    <div>
+                        <div class="relative">
+                            <textarea id="aiVizPrompt" rows="4" class="mt-1 block w-full py-2.5 px-3 border border-gray-300 bg-white rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[#ff6363] focus:border-[#ff6363] sm:text-sm transition duration-150" placeholder="Describe the graph you want to create"></textarea>
+                            <button id="enhanceAiVizBtn" class="enhance-btn absolute bottom-2 right-2 bg-custom text-white text-xs font-semibold py-1 px-2 rounded-md shadow-sm" title="Enhance Prompt">
+                                <i class="fas fa-magic"></i> Enhance
+                            </button>
+                        </div>
+                        <div id="aiVizEnhanceArea" class="enhancement-display mt-3 p-3 border border-gray-200 rounded-md bg-gray-50 hidden"></div>
+                    </div>
+                </div>
+                <div class="mt-8 text-right">
+                    <button id="submitAiVizButton" class="bg-custom text-white font-bold py-2.5 px-8 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out flex items-center justify-center space-x-2">
+                        <i class="fas fa-magic"></i>
+                        <span>Generate Visualization</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="aiVizResultModal" class="modal fixed inset-0 bg-gray-800 bg-opacity-75 overflow-y-auto h-full w-full flex items-center justify-center hidden z-50 p-4">
+            <div class="modal-dialog relative mx-auto p-6 sm:p-8 border w-[95vw] max-w-[95vw] h-[90vh] max-h-[90vh] shadow-2xl rounded-xl bg-white flex flex-col">
+                <div class="flex justify-between items-center mb-5 flex-shrink-0">
+                    <h3 id="aiVizResultTitle" class="text-2xl font-semibold text-gray-800">AI-Generated Visualization</h3>
+                    <button id="closeAiVizResultModalButton" class="text-gray-500 hover:text-gray-700 transition duration-150 p-1 rounded-full hover:bg-gray-200">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+                <div id="aiVizResultContentArea" class="modal-content-area bg-gray-50 p-4 rounded-lg border border-gray-200 flex-grow overflow-auto flex flex-col">
+                    <div id="aiVizResultText" class="text-xs text-gray-600 bg-white p-2 rounded border whitespace-pre-wrap mb-3 flex-shrink-0 max-h-32 overflow-y-auto hidden"></div>
+                    <div id="aiVizChartContainer" class="chart-canvas-container mt-2 flex-grow">
+                        {/* AI generated charts will be rendered here */}
+                    </div>
+                </div>
+                <div class="mt-6 text-right flex-shrink-0">
+                    <button id="downloadAllAiGraphsButton" class="bg-custom text-white font-semibold py-2 px-5 rounded-lg shadow-md hover:shadow-lg transition duration-150 items-center space-x-2 hidden">
+                        <i class="fas fa-cloud-download-alt"></i>
+                        <span>Download All AI Graphs</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="configuredVizResultModal" class="modal fixed inset-0 bg-gray-800 bg-opacity-75 overflow-y-auto h-full w-full flex items-center justify-center hidden z-50 p-4">
+            <div class="modal-dialog relative mx-auto p-6 sm:p-8 border w-[95vw] max-w-[95vw] h-[90vh] max-h-[90vh] shadow-2xl rounded-xl bg-white flex flex-col">
+                <div class="flex justify-between items-center mb-5 flex-shrink-0">
+                    <h3 id="configuredVizResultTitle" class="text-2xl font-semibold text-gray-800">Configured Visualizations</h3>
+                    <button id="closeConfiguredVizResultModalButton" class="text-gray-500 hover:text-gray-700 transition duration-150 p-1 rounded-full hover:bg-gray-200">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+                <div id="configuredVizResultContentArea" class="modal-content-area bg-gray-50 p-4 rounded-lg border border-gray-200 flex-grow overflow-auto">
+                    <div id="configuredVizChartContainer" class="chart-canvas-container">
+                    </div>
+                </div>
+                <div class="mt-6 text-right flex-shrink-0">
+                    <button id="downloadAllConfiguredGraphsButton" class="bg-custom text-white font-semibold py-2 px-5 rounded-lg shadow-md hover:shadow-lg transition duration-150 items-center space-x-2 hidden">
+                        <i class="fas fa-cloud-download-alt"></i>
+                        <span>Download All Configured Graphs</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+
+        <div id="sqlQueryModal" class="modal fixed inset-0 bg-gray-800 bg-opacity-75 overflow-y-auto h-full w-full flex items-center justify-center hidden z-50 p-4">
+            <div class="modal-dialog relative mx-auto p-6 sm:p-8 border w-full max-w-xl shadow-2xl rounded-xl bg-white">
+                <div class="flex justify-between items-center mb-6">
+                    <h3 class="text-2xl font-semibold text-gray-800 flex items-center"><i class="fas fa-database mr-3 text-feature"></i>Execute SQL Query</h3>
+                    <button id="closeSqlQueryModalButton" class="text-gray-500 hover:text-gray-700 transition duration-150 p-1 rounded-full hover:bg-gray-200">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
+                <div class="space-y-5">
+                    <div>
+                        <div class="relative">
+                            <textarea id="sqlQueryInput" rows="6" class="mt-1 block w-full py-2.5 px-3 border border-gray-300 bg-white rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-[#ff6363] focus:border-[#ff6363] sm:text-sm transition duration-150 font-mono" placeholder="Enter your SQL query (e.g., SELECT * FROM data_table LIMIT 10)"></textarea>
+                            <button id="enhanceSqlQueryBtn" class="enhance-btn absolute bottom-2 right-2 bg-custom text-white text-xs font-semibold py-1 px-2 rounded-md shadow-sm" title="Enhance SQL Query">
+                                <i class="fas fa-magic"></i> Enhance
+                            </button>
+                        </div>
+                        <div id="sqlQueryEnhanceArea" class="enhancement-display mt-3 p-3 border border-gray-200 rounded-md bg-gray-50 hidden"></div>
+                    </div>
+                </div>
+                <div class="mt-8 text-right">
+                    <button id="executeSqlButton" class="bg-custom text-white font-bold py-2.5 px-8 rounded-lg shadow-md hover:shadow-lg transition duration-150 ease-in-out flex items-center justify-center space-x-2">
+                        <i class="fas fa-play"></i>
+                        <span>Execute Query</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+
+        <section id="chartSection" class="mt-8 hidden">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4 flex items-center"><i class="fas fa-chart-line mr-3 text-gray-600"></i>Visualized Graphs (Main Page - Deprecated)</h2>
+            <div id="chartDisplayArea" class="grid grid-cols-1 lg:grid-cols-2 gap-8 bg-white p-4 sm:p-6 rounded-xl shadow-lg min-h-[200px] items-start">
+                <div id="noChartMessageContainer" class="col-span-full text-center py-10 flex flex-col items-center justify-center text-gray-500">
+                    <svg class="w-16 h-16 text-gray-400 mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z"></path></svg>
+                    <p id="noChartMessage">Visualizations will now appear in a pop-up window.</p>
+                </div>
+            </div>
+        </section>
+
+        <footer class="text-center text-sm text-gray-500 mt-12 py-6 border-t border-gray-300">
+            &copy; <span id="currentYear"></span> Ascendion. All Rights Reserved.
+        </footer>
+    </div>
+
+    <script>
+        // --- Global Variables ---
+        let parsedData = [];
+        let columnHeaders = [];
+        let chartObjects = []; // Stores chart instances for ALL modals that display charts
+        let currentUploadedFile = null;
+        let currentSessionId = null;
+        let currentUploadedFilePath = null;
+        let currentResultFileNameForDownload = null;
+        let currentUploadedFilename = null;
+
+        const API_BASE_URL = 'http://127.0.0.1:5001'; // Ensure this matches your Flask app's address
+
+        // --- DOM Elements ---
+        const loginOverlay = document.getElementById('loginOverlay');
+        const loginBox = document.getElementById('loginBox');
+        const loginForm = document.getElementById('loginForm');
+        const logoutButton = document.getElementById('logoutButton');
+        const welcomeMessageElement = document.getElementById('welcomeMessage');
+
+        const fileInput = document.getElementById('fileInput');
+        const fileNameLabel = document.getElementById('fileNameLabel');
+        const createVizButton = document.getElementById('createVizButton'); // For manual/configured viz
+        const analyzeDataButton = document.getElementById('analyzeDataButton');
+        const askQuestionButton = document.getElementById('askQuestionButton');
+        const openPostgresModalButton = document.getElementById('openPostgresModalButton');
+
+        // Configured Viz Modal Elements
+        const configModal = document.getElementById('configModal');
+        const closeConfigModalButton = document.getElementById('closeConfigModalButton');
+        const chartTypeCheckboxes = document.querySelectorAll('#chartTypeContainer input[type="checkbox"]');
+        const xAxisSelect = document.getElementById('xAxisSelect');
+        const visualizeButton = document.getElementById('visualizeButton'); // Triggers configured chart creation
+        const yAxisCheckboxContainer = document.getElementById('yAxisCheckboxContainer');
+        const configuredVizResultModal = document.getElementById('configuredVizResultModal');
+        const configuredVizChartContainer = document.getElementById('configuredVizChartContainer');
+        const closeConfiguredVizResultModalButton = document.getElementById('closeConfiguredVizResultModalButton');
+        const downloadAllConfiguredGraphsButton = document.getElementById('downloadAllConfiguredGraphsButton');
+
+        const askQuestionModal = document.getElementById('askQuestionModal');
+        const closeAskModalButton = document.getElementById('closeAskModalButton');
+        const questionInput = document.getElementById('questionInput');
+        const submitQuestionButton = document.getElementById('submitQuestionButton');
+
+        const resultsModal = document.getElementById('resultsModal'); // General results (text, markdown)
+        const resultsModalTitle = document.getElementById('resultsModalTitle');
+        const resultsModalTextContainer = document.getElementById('resultsModalText');
+        const closeResultsModalButton = document.getElementById('closeResultsModalButton');
+        const downloadResultButton = document.getElementById('downloadResultButton');
+
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const loadingMessage = document.getElementById('loadingMessage');
+
+        const postgresModal = document.getElementById('postgresModal');
+        const closePostgresModalButton = document.getElementById('closePostgresModalButton');
+        const postgresSchemaSelect = document.getElementById('postgresSchemaSelect');
+        const postgresTableSelect = document.getElementById('postgresTableSelect');
+        const importTableButton = document.getElementById('importTableButton');
+        const postgresError = document.getElementById('postgresError');
+
+        const notificationContainer = document.getElementById('notification-container');
+
+        // Enhancement related DOM elements
+        const enhanceQuestionBtn = document.getElementById('enhanceQuestionBtn');
+        const questionEnhanceArea = document.getElementById('questionEnhanceArea');
+        const enhanceAiVizBtn = document.getElementById('enhanceAiVizBtn');
+        const aiVizEnhanceArea = document.getElementById('aiVizEnhanceArea');
+        const enhanceSqlQueryBtn = document.getElementById('enhanceSqlQueryBtn'); 
+        const sqlQueryEnhanceArea = document.getElementById('sqlQueryEnhanceArea'); 
+
+
+        // AI Visualization DOM Elements
+        const aiVizButton = document.getElementById('aiVizButton');
+        const aiVizModal = document.getElementById('aiVizModal');
+        const closeAiVizModalButton = document.getElementById('closeAiVizModalButton');
+        const aiVizPrompt = document.getElementById('aiVizPrompt');
+        const submitAiVizButton = document.getElementById('submitAiVizButton');
+        const aiVizResultModal = document.getElementById('aiVizResultModal');
+        const aiVizResultTitle = document.getElementById('aiVizResultTitle');
+        const aiVizResultText = document.getElementById('aiVizResultText'); 
+        const aiVizChartContainer = document.getElementById('aiVizChartContainer'); 
+        const closeAiVizResultModalButton = document.getElementById('closeAiVizResultModalButton');
+        const downloadAllAiGraphsButton = document.getElementById('downloadAllAiGraphsButton');
+
+        // SQL Query Modal Elements
+        const sqlQueryModal = document.getElementById('sqlQueryModal');
+        const closeSqlQueryModalButton = document.getElementById('closeSqlQueryModalButton');
+        const sqlQueryInput = document.getElementById('sqlQueryInput');
+        const executeSqlButton = document.getElementById('executeSqlButton');
+        const sqlQueryButton = document.getElementById('sqlQueryButton');
+        
+
+        // --- Utility Functions ---
+        function showNotification(message, type = 'info', duration = 5000) {
+            const notification = document.createElement('div');
+            notification.classList.add('notification', type);
+            let iconClass = 'fas fa-info-circle';
+            if (type === 'success') iconClass = 'fas fa-check-circle';
+            else if (type === 'error') iconClass = 'fas fa-times-circle';
+            else if (type === 'warning') iconClass = 'fas fa-exclamation-triangle';
+            notification.innerHTML = `
+                <i class="notification-icon ${iconClass}"></i>
+                <span class="notification-message">${escapeHtml(message)}</span>
+                <button class="notification-close">&times;</button>
+            `;
+            notificationContainer.appendChild(notification);
+            void notification.offsetWidth; 
+            notification.classList.add('show');
+            const closeButton = notification.querySelector('.notification-close');
+            closeButton.addEventListener('click', () => {
+                notification.classList.remove('show');
+                setTimeout(() => { if (notification.parentElement) notification.remove(); }, 300);
+            });
+            if (duration > 0) {
+                setTimeout(() => {
+                    if (notification.parentElement) {
+                        notification.classList.remove('show');
+                        setTimeout(() => { if (notification.parentElement) notification.remove(); }, 300);
+                    }
+                }, duration);
+            }
+        }
+
+        function showLoading(message = "Processing...") {
+            loadingMessage.textContent = message;
+            loadingOverlay.classList.add('active');
+        }
+        function hideLoading() {
+            loadingOverlay.classList.remove('active');
+        }
+
+        function displayResultsInModal(title, content, downloadable = false, downloadFilename = null, isHtml = false) {
+            resultsModalTitle.textContent = title;
+            resultsModalTextContainer.innerHTML = '';
+            if (isHtml) {
+                resultsModalTextContainer.innerHTML = content; 
+                resultsModalTextContainer.classList.add('markdown-content');
+                resultsModalTextContainer.classList.remove('whitespace-pre-wrap');
+            } else {
+                const preElement = document.createElement('pre');
+                preElement.textContent = content;
+                preElement.classList.add('whitespace-pre-wrap'); 
+                resultsModalTextContainer.appendChild(preElement);
+                resultsModalTextContainer.classList.remove('markdown-content');
+            }
+            currentResultFileNameForDownload = downloadFilename;
+            downloadResultButton.classList.toggle('hidden', !(downloadable && downloadFilename));
+            downloadResultButton.style.display = (downloadable && downloadFilename) ? 'inline-flex' : 'none';
+            resultsModal.classList.remove('hidden');
+        }
+
+        // --- Login/Logout Functionality ---
+        function checkLoginState() {
+            const isLoggedIn = localStorage.getItem('isLoggedIn') === 'true';
+            const loggedInUserEmail = localStorage.getItem('loggedInUserEmail');
+
+            if (isLoggedIn && loggedInUserEmail) {
+                loginOverlay.classList.add('opacity-0', 'invisible');
+                setTimeout(() => loginOverlay.style.display = 'none', 300);
+                welcomeMessageElement.textContent = `Welcome, ${escapeHtml(loggedInUserEmail)}`;
+                welcomeMessageElement.classList.remove('hidden');
+                logoutButton.classList.remove('hidden');
+            } else {
+                loginOverlay.style.display = 'flex';
+                setTimeout(() => {
+                    loginOverlay.classList.remove('opacity-0', 'invisible');
+                    loginBox.classList.remove('scale-95', 'opacity-0');
+                    loginBox.classList.add('scale-100', 'opacity-100');
+                }, 50);
+                welcomeMessageElement.textContent = '';
+                welcomeMessageElement.classList.add('hidden');
+                logoutButton.classList.add('hidden');
+            }
+        }
+
+        function setupLoginListeners() {
+            loginForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const email = document.getElementById('email').value;
+                const password = document.getElementById('password').value;
+                if (!email || !password) {
+                    showNotification("Please enter both email and password.", "error"); return;
+                }
+                localStorage.setItem('isLoggedIn', 'true');
+                localStorage.setItem('loggedInUserEmail', email);
+                showNotification("Login successful!", "success");
+                checkLoginState();
+            });
+
+            logoutButton.addEventListener('click', function() {
+                localStorage.removeItem('isLoggedIn');
+                localStorage.removeItem('loggedInUserEmail');
+                showNotification("Logged out successfully.", "info");
+                resetFileState(true);
+                checkLoginState();
+            });
+        }
+
+        function handleSuccessfulDataLoad(dataForViz, headers, sessionId, serverFilePath, displayFileName) {
+            parsedData = dataForViz;
+            columnHeaders = headers;
+            currentSessionId = sessionId;
+            currentUploadedFilePath = serverFilePath;
+            currentUploadedFilename = displayFileName;
+
+            fileNameLabel.textContent = displayFileName;
+            fileNameLabel.title = displayFileName; 
+
+            analyzeDataButton.disabled = false;
+            askQuestionButton.disabled = false;
+            aiVizButton.disabled = !(headers && headers.length > 0);
+            sqlQueryButton.disabled = false; 
+
+            if (headers && headers.length > 0) {
+                createVizButton.disabled = false; 
+                showNotification(`Data "${escapeHtml(displayFileName)}" loaded successfully.`, "success");
+            } else {
+                createVizButton.disabled = true;
+                showNotification("Data loaded, but no headers/columns were found. Visualization might be limited.", "warning");
+            }
+            hideLoading();
+        }
+
+        fileInput.addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            currentUploadedFile = file; 
+
+            if (file) {
+                showLoading("Uploading and preparing file...");
+                resetFileState(false); 
+
+                const formData = new FormData();
+                formData.append('file', file);
+
+                try {
+                    const response = await fetch(`${API_BASE_URL}/api/upload`, { method: 'POST', body: formData });
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({ message: `HTTP error! status: ${response.status}` }));
+                        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+                    }
+                    const result = await response.json();
+
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const data = e.target.result;
+                        let localParsedData = [];
+                        let localColumnHeaders = [];
+                        try {
+                            if (file.name.endsWith('.csv')) {
+                                Papa.parse(data, {
+                                    header: true, skipEmptyLines: true,
+                                    complete: (papaResults) => {
+                                        if (papaResults.errors.length > 0) {
+                                            console.warn("CSV Parsing Errors (client-side):", papaResults.errors);
+                                            showNotification("Warning: Some rows in CSV might have client-side parsing issues.", "warning", 7000);
+                                        }
+                                        localParsedData = papaResults.data;
+                                        localColumnHeaders = papaResults.meta.fields || (localParsedData.length > 0 ? Object.keys(localParsedData[0]) : []);
+                                        handleSuccessfulDataLoad(localParsedData, localColumnHeaders, result.session_id, result.file_path, file.name);
+                                    }
+                                });
+                            } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+                                const workbook = XLSX.read(data, { type: 'binary' });
+                                const firstSheetName = workbook.SheetNames[0];
+                                const worksheet = workbook.Sheets[firstSheetName];
+                                localParsedData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+                                if (localParsedData.length > 0) localColumnHeaders = Object.keys(localParsedData[0]);
+                                handleSuccessfulDataLoad(localParsedData, localColumnHeaders, result.session_id, result.file_path, file.name);
+                            }
+                        } catch (parseError) {
+                            console.error("Local file parsing error:", parseError);
+                            showNotification("Error parsing file locally for visualization config: " + parseError.message, "error");
+                            handleSuccessfulDataLoad([], [], result.session_id, result.file_path, file.name); // Still allow backend processing
+                        }
+                    };
+
+                    if (file.name.endsWith('.csv')) reader.readAsText(file);
+                    else reader.readAsBinaryString(file);
+
+                } catch (error) {
+                    console.error("File upload error:", error);
+                    showNotification(`File upload failed: ${error.message}`, "error");
+                    resetFileState(true); 
+                    hideLoading();
+                }
+            } else {
+                resetFileState(true); 
+            }
+        });
+
+        function resetFileState(clearFileInputValue = true) {
+            if (clearFileInputValue) {
+                fileInput.value = ''; 
+                fileNameLabel.textContent = 'No file chosen';
+                fileNameLabel.title = 'No file chosen';
+                currentUploadedFile = null;
+                currentUploadedFilename = null;
+            }
+            currentSessionId = null;
+            currentUploadedFilePath = null;
+            parsedData = [];
+            columnHeaders = [];
+
+            createVizButton.disabled = true;
+            analyzeDataButton.disabled = true;
+            askQuestionButton.disabled = true;
+            aiVizButton.disabled = true;
+            sqlQueryButton.disabled = true;
+
+            clearAllChartsGlobally(); 
+            resultsModalTextContainer.innerHTML = ''; 
+
+            questionEnhanceArea.classList.add('hidden'); questionEnhanceArea.innerHTML = '';
+            aiVizEnhanceArea.classList.add('hidden'); aiVizEnhanceArea.innerHTML = '';
+            sqlQueryEnhanceArea.classList.add('hidden'); sqlQueryEnhanceArea.innerHTML = ''; 
+
+            if(downloadAllConfiguredGraphsButton) downloadAllConfiguredGraphsButton.classList.add('hidden');
+            if(downloadAllAiGraphsButton) downloadAllAiGraphsButton.classList.add('hidden');
+        }
+
+        openPostgresModalButton.addEventListener('click', () => {
+            postgresModal.classList.remove('hidden');
+            postgresError.classList.add('hidden'); postgresError.textContent = '';
+            loadPostgresSchemas();
+        });
+        closePostgresModalButton.addEventListener('click', () => postgresModal.classList.add('hidden'));
+        postgresModal.addEventListener('click', (event) => { if (event.target === postgresModal) postgresModal.classList.add('hidden'); });
+
+        async function loadPostgresSchemas() {
+            postgresSchemaSelect.innerHTML = '<option value="">Loading schemas...</option>';
+            postgresTableSelect.innerHTML = '<option value="">Select a schema first</option>';
+            postgresTableSelect.disabled = true; importTableButton.disabled = true;
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/postgres/schemas`);
+                if (!response.ok) throw new Error(`Failed to fetch schemas: ${response.statusText}`);
+                const schemas = await response.json();
+                postgresSchemaSelect.innerHTML = '<option value="" disabled selected>Select Schema</option>';
+                schemas.forEach(schema => {
+                    const option = document.createElement('option'); option.value = schema; option.textContent = schema;
+                    postgresSchemaSelect.appendChild(option);
+                });
+            } catch (err) {
+                console.error("Error loading schemas:", err);
+                postgresSchemaSelect.innerHTML = '<option value="">Error loading schemas</option>';
+                postgresError.textContent = `Error: ${err.message}`; postgresError.classList.remove('hidden');
+                showNotification(`Error loading schemas: ${err.message}`, "error");
+            }
+        }
+
+        postgresSchemaSelect.addEventListener('change', async (event) => {
+            const schemaName = event.target.value;
+            postgresTableSelect.innerHTML = '<option value="">Loading tables...</option>';
+            postgresTableSelect.disabled = true; importTableButton.disabled = true;
+            postgresError.classList.add('hidden');
+            if (!schemaName) { postgresTableSelect.innerHTML = '<option value="">Select a schema first</option>'; return; }
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/postgres/tables/${schemaName}`);
+                if (!response.ok) throw new Error(`Failed to fetch tables: ${response.statusText}`);
+                const tables = await response.json();
+                postgresTableSelect.innerHTML = '<option value="" disabled selected>Select Table</option>';
+                tables.forEach(table => {
+                    const option = document.createElement('option'); option.value = table; option.textContent = table;
+                    postgresTableSelect.appendChild(option);
+                });
+                postgresTableSelect.disabled = false;
+            } catch (err) {
+                console.error("Error loading tables:", err);
+                postgresTableSelect.innerHTML = '<option value="">Error loading tables</option>';
+                postgresError.textContent = `Error: ${err.message}`; postgresError.classList.remove('hidden');
+                showNotification(`Error loading tables: ${err.message}`, "error");
+            }
+        });
+
+        postgresTableSelect.addEventListener('change', () => { importTableButton.disabled = !postgresTableSelect.value; });
+
+        importTableButton.addEventListener('click', async () => {
+            const schemaName = postgresSchemaSelect.value; const tableName = postgresTableSelect.value;
+            if (!schemaName || !tableName) { showNotification("Please select both schema and table.", "warning"); return; }
+            showLoading(`Importing table ${schemaName}.${tableName}...`);
+            postgresModal.classList.add('hidden'); resetFileState(true);
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/postgres/upload-table`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ schema_name: schemaName, table_name: tableName })
+                });
+                if (!response.ok) {
+                     const errData = await response.json().catch(() => ({error: `Failed to import: ${response.statusText}`}));
+                     throw new Error(errData.error || `Failed to import table: ${response.statusText}`);
+                }
+                const result = await response.json();
+                if (result.status === 'success') {
+                    handleSuccessfulDataLoad(result.data_for_visualization, result.column_headers, result.session_id, result.file_path, result.original_filename);
+                } else { throw new Error(result.message || "Failed to import from PostgreSQL."); }
+            } catch (err) {
+                console.error("Error importing from Postgres:", err);
+                showNotification(`Error importing table: ${err.message}`, "error");
+                hideLoading(); resetFileState(true);
+            }
+        });
+
+        function downloadChart(canvasOrImgElement, filename) {
+            let dataUrl;
+            if (canvasOrImgElement.tagName === 'CANVAS') {
+                dataUrl = canvasOrImgElement.toDataURL('image/png');
+            } else if (canvasOrImgElement.tagName === 'IMG') {
+                dataUrl = canvasOrImgElement.src;
+            } else {
+                showNotification("Cannot download: Element is not a chart canvas or image.", "error");
+                return;
+            }
+            const link = document.createElement('a');
+            link.href = dataUrl;
+            link.download = filename;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        const AGGREGATION_FUNCTIONS = {
+            _sum: (arr) => arr.reduce((acc, val) => acc + val, 0),
+            _avg: (arr) => arr.length ? AGGREGATION_FUNCTIONS._sum(arr) / arr.length : null,
+            _min: (arr) => arr.length ? Math.min(...arr) : null,
+            _max: (arr) => arr.length ? Math.max(...arr) : null,
+            _count: (arr) => arr.length,
+            _count_distinct: (arr) => new Set(arr.filter(val => val !== null && val !== undefined)).size,
+            _median: (arr) => {
+                if (!arr.length) return null;
+                const sorted = [...arr].filter(val => typeof val === 'number' && !isNaN(val)).sort((a, b) => a - b);
+                if (!sorted.length) return null;
+                const mid = Math.floor(sorted.length / 2);
+                return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+            },
+            _variance: (arr, isSample = false) => {
+                const numericArr = arr.filter(val => typeof val === 'number' && !isNaN(val));
+                if (numericArr.length < (isSample ? 2 : 1)) return null;
+                const mean = AGGREGATION_FUNCTIONS._avg(numericArr);
+                if (mean === null) return null;
+                const sumSqDiff = numericArr.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0);
+                return sumSqDiff / (isSample ? numericArr.length - 1 : numericArr.length);
+            },
+            _stddev: (arr, isSample = false) => {
+                const vari = AGGREGATION_FUNCTIONS._variance(arr, isSample);
+                return vari === null ? null : Math.sqrt(vari);
+            }
+        };
+        
+        // --- Visualization Modal & Charting (Manual/Configured) ---
+        createVizButton.addEventListener('click', () => {
+            if (!parsedData || parsedData.length === 0 || !columnHeaders || columnHeaders.length === 0) {
+                showNotification("No data loaded or headers not found. Upload/import data first.", "warning"); return;
+            }
+            populateModalSelectors();
+            configModal.classList.remove('hidden');
+            checkModalFormValidity();
+        });
+        closeConfigModalButton.addEventListener('click', () => configModal.classList.add('hidden'));
+        configModal.addEventListener('click', (event) => { if (event.target === configModal) configModal.classList.add('hidden'); });
+
+        function populateModalSelectors() {
+            xAxisSelect.innerHTML = '<option value="" disabled selected>Select X-axis</option>';
+            columnHeaders.forEach(header => {
+                const opt = document.createElement('option'); opt.value = header; opt.textContent = header;
+                xAxisSelect.appendChild(opt);
+            });
+
+            yAxisCheckboxContainer.innerHTML = '';
+            if (columnHeaders.length === 0) {
+                yAxisCheckboxContainer.innerHTML = '<p class="text-xs text-gray-500">No columns available.</p>';
+            } else {
+                columnHeaders.forEach(header => {
+                    const itemDiv = document.createElement('div'); itemDiv.className = 'y-axis-item';
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox'; checkbox.id = `yCheckbox-${header.replace(/\s+/g, '-')}`;
+                    checkbox.value = header; checkbox.className = 'form-checkbox h-4 w-4 rounded text-feature border-gray-300 focus:ring-[#ff6363] transition duration-150'; // Apply text-feature and focus ring
+                    const label = document.createElement('label');
+                    label.htmlFor = checkbox.id; label.textContent = header; label.className = 'text-sm text-gray-700 cursor-pointer';
+                    const aggregationSelect = document.createElement('select');
+                    aggregationSelect.className = 'aggregation-select ml-auto hidden'; aggregationSelect.disabled = true;
+                    // Add focus style for aggregation select as well
+                    aggregationSelect.classList.add('focus:ring-2', 'focus:ring-[#ff6363]', 'focus:border-[#ff6363]');
+                    const aggregations = [
+                        { value: "value", text: "Value (Raw)" }, { value: "sum", text: "Sum" },
+                        { value: "avg", text: "Average" }, { value: "min", text: "Minimum" },
+                        { value: "max", text: "Maximum" }, { value: "count", text: "Count" },
+                        { value: "count_distinct", text: "Count (Distinct)" }, { value: "median", text: "Median" },
+                        { value: "stddev", text: "StdDev" }, { value: "variance", text: "Variance" }
+                    ];
+                    aggregations.forEach(agg => {
+                        const opt = document.createElement('option'); opt.value = agg.value; opt.textContent = agg.text;
+                        aggregationSelect.appendChild(opt);
+                    });
+                    itemDiv.appendChild(checkbox); itemDiv.appendChild(label); itemDiv.appendChild(aggregationSelect);
+                    yAxisCheckboxContainer.appendChild(itemDiv);
+                    checkbox.addEventListener('change', () => {
+                        aggregationSelect.classList.toggle('hidden', !checkbox.checked);
+                        aggregationSelect.disabled = !checkbox.checked;
+                        if (!checkbox.checked) aggregationSelect.value = 'value';
+                        checkModalFormValidity();
+                    });
+                    aggregationSelect.addEventListener('change', checkModalFormValidity);
+                });
+            }
+            chartTypeCheckboxes.forEach(cb => cb.checked = false);
+            visualizeButton.disabled = true;
+        }
+
+        function checkModalFormValidity() {
+            const selChartTypesCount = document.querySelectorAll('#chartTypeContainer input[type="checkbox"]:checked').length;
+            const selectedYAxisConfigs = Array.from(yAxisCheckboxContainer.querySelectorAll('.y-axis-item'))
+                .filter(item => item.querySelector('input[type="checkbox"]').checked);
+            visualizeButton.disabled = !(selChartTypesCount > 0 && xAxisSelect.value && selectedYAxisConfigs.length > 0);
+        }
+        chartTypeCheckboxes.forEach(cb => cb.addEventListener('change', checkModalFormValidity));
+        xAxisSelect.addEventListener('change', checkModalFormValidity);
+
+        function generateHtmlTableElement(headers, data, title) {
+            const tableWrapper = document.createElement('div');
+            tableWrapper.style.width = '100%'; tableWrapper.style.overflowX = 'auto';
+            const table = document.createElement('table'); table.className = 'generated-html-table';
+            if (title) {
+                const caption = table.createCaption(); caption.textContent = title;
+                caption.style.fontWeight = 'bold'; caption.style.fontSize = '1.1em';
+                caption.style.paddingBottom = '10px'; caption.style.textAlign = 'left';
+            }
+            const thead = table.createTHead(); const headerRow = thead.insertRow();
+            headers.forEach(headerText => {
+                const th = document.createElement('th'); th.textContent = headerText; headerRow.appendChild(th);
+            });
+            const tbody = table.createTBody();
+            data.forEach(rowData => {
+                const row = tbody.insertRow();
+                headers.forEach(header => {
+                    const cell = row.insertCell();
+                    cell.textContent = rowData[header] !== undefined && rowData[header] !== null ? String(rowData[header]) : '';
+                });
+            });
+            tableWrapper.appendChild(table); return tableWrapper;
+        }
+        
+        visualizeButton.addEventListener('click', () => {
+            if (visualizeButton.disabled) return;
+
+            const selectedChartTypes = Array.from(document.querySelectorAll('#chartTypeContainer input[type="checkbox"]:checked')).map(cb => cb.value);
+            const xAxisColumn = xAxisSelect.value;
+            const selectedYAxisConfigs = Array.from(yAxisCheckboxContainer.querySelectorAll('.y-axis-item'))
+                .map(item => {
+                    const cb = item.querySelector('input[type="checkbox"]');
+                    const sel = item.querySelector('select.aggregation-select');
+                    return cb.checked ? { column: cb.value, aggregation: sel.value } : null;
+                })
+                .filter(config => config !== null);
+
+            if (!selectedChartTypes.length || !xAxisColumn || !selectedYAxisConfigs.length) {
+                showNotification("Please select chart type(s), X-axis, and Y-axis/aggregation.", "warning"); return;
+            }
+            
+            renderChartsInModal(
+                configuredVizChartContainer,
+                selectedChartTypes,
+                xAxisColumn,
+                selectedYAxisConfigs,
+                parsedData, 
+                columnHeaders, 
+                configuredVizResultModal,
+                downloadAllConfiguredGraphsButton
+            );
+            configModal.classList.add('hidden');
+        });
+
+        // Helper function to render a single chart configuration
+        function generateAndAppendChartFromConfig(config) {
+            const {
+                targetChartContainer,
+                chartType, 
+                xAxisColumn,
+                yAxisConfigurations,
+                dataSource,
+                allColHeaders 
+            } = config;
+
+            let processedChartData = [];
+            let uniqueXValuesMap = new Map();
+
+            dataSource.forEach(row => {
+                const xVal = row[xAxisColumn];
+                if (xVal === undefined || xVal === null) return;
+
+                if (!uniqueXValuesMap.has(xVal)) {
+                    let yGroup = {};
+                    yAxisConfigurations.forEach(yc => {
+                        yGroup[`${yc.column}_${yc.aggregation}`] = [];
+                    });
+                    uniqueXValuesMap.set(xVal, yGroup);
+                }
+
+                yAxisConfigurations.forEach(yc => {
+                    const rawYVal = row[yc.column];
+                    if (yc.aggregation === 'count' || yc.aggregation === 'count_distinct') {
+                        uniqueXValuesMap.get(xVal)[`${yc.column}_${yc.aggregation}`].push(rawYVal);
+                    } else {
+                        const numYVal = parseFloat(rawYVal);
+                        if (!isNaN(numYVal) || yc.aggregation === 'value') { // Allow non-numeric for 'value' aggregation
+                            uniqueXValuesMap.get(xVal)[`${yc.column}_${yc.aggregation}`].push(yc.aggregation === 'value' ? rawYVal : numYVal);
+                        }
+                    }
+                });
+            });
+
+            const finalXValues = Array.from(uniqueXValuesMap.keys()).sort((a, b) => {
+                const numA = parseFloat(a); const numB = parseFloat(b);
+                if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+                return String(a).localeCompare(String(b));
+            });
+
+            finalXValues.forEach(xVal => {
+                let yAggregatedValues = { xValue: xVal };
+                yAxisConfigurations.forEach(yc => {
+                    const valuesToAggregate = uniqueXValuesMap.get(xVal)[`${yc.column}_${yc.aggregation}`];
+                    let aggregatedValue = null;
+                    if (yc.aggregation === 'value') {
+                        // For 'value', try to find a numeric one first, otherwise take the first non-null/undefined
+                        if (Array.isArray(valuesToAggregate)) {
+                            aggregatedValue = valuesToAggregate.find(v => typeof v === 'number' && !isNaN(v)) ?? 
+                                              valuesToAggregate.find(v => v !== null && v !== undefined);
+                        } else { // Should be array, but defensive
+                            aggregatedValue = valuesToAggregate;
+                        }
+                    } else if (AGGREGATION_FUNCTIONS['_' + yc.aggregation]) {
+                        aggregatedValue = AGGREGATION_FUNCTIONS['_' + yc.aggregation](valuesToAggregate);
+                    }
+                    yAggregatedValues[`${yc.column}_${yc.aggregation}`] = aggregatedValue;
+                });
+                processedChartData.push(yAggregatedValues);
+            });
+
+            const baseColors = [ 
+                { bg: 'rgba(59, 130, 246, 0.7)', border: 'rgb(59, 130, 246)' }, 
+                { bg: 'rgba(239, 68, 68, 0.7)', border: 'rgb(239, 68, 68)' },
+                { bg: 'rgba(16, 185, 129, 0.7)', border: 'rgb(16, 185, 129)' }, 
+                { bg: 'rgba(245, 158, 11, 0.7)', border: 'rgb(245, 158, 11)' },
+                { bg: 'rgba(139, 92, 246, 0.7)', border: 'rgb(139, 92, 246)' }, 
+                { bg: 'rgba(236, 72, 153, 0.7)', border: 'rgb(236, 72, 153)' },
+                { bg: 'rgba(22, 163, 74, 0.7)', border: 'rgb(22, 163, 74)'},
+                { bg: 'rgba(217, 119, 6, 0.7)', border: 'rgb(217, 119, 6)'}, 
+                { bg: 'rgba(79, 70, 229, 0.7)', border: 'rgb(79, 70, 229)'}, 
+                { bg: 'rgba(219, 39, 119, 0.7)', border: 'rgb(219, 39, 119)'} 
+            ];
+            let chartGenerated = false;
+
+            let yAxisDescForTitle = yAxisConfigurations.map(yc => `${yc.column} (${capitalizeFirstLetter(yc.aggregation.replace("_", " "))})`).join(', ');
+            let commonChartTitle = `${capitalizeFirstLetter(chartType)}: ${yAxisDescForTitle} vs ${xAxisColumn}`;
+
+            const chartItemWrapper = document.createElement('div');
+            chartItemWrapper.className = 'chart-item-wrapper';
+            const chartCanvasWrapper = document.createElement('div');
+            chartCanvasWrapper.className = 'chart-canvas-wrapper';
+            chartItemWrapper.appendChild(chartCanvasWrapper);
+
+            const downloadBtn = document.createElement('button');
+            downloadBtn.className = 'individual-chart-download-btn';
+            downloadBtn.innerHTML = '<i class="fas fa-download"></i>';
+            downloadBtn.title = 'Download Chart';
+            chartItemWrapper.appendChild(downloadBtn);
+
+            if (['table', 'matrix'].includes(chartType)) {
+                downloadBtn.style.display = 'none'; 
+                const tableHeaders = [xAxisColumn, ...yAxisConfigurations.map(yc => `${yc.column} (${capitalizeFirstLetter(yc.aggregation.replace("_", " "))})`)];
+                const tableData = processedChartData.map(row => {
+                    let newRow = { [xAxisColumn]: row.xValue };
+                    yAxisConfigurations.forEach(yc => {
+                        const accessorKey = `${yc.column}_${yc.aggregation}`;
+                        let displayValue = row[accessorKey];
+                        if (Array.isArray(displayValue)) { displayValue = displayValue.join(', '); }
+                        newRow[`${yc.column} (${capitalizeFirstLetter(yc.aggregation.replace("_", " "))})`] = displayValue;
+                    });
+                    return newRow;
+                });
+                const tableElement = generateHtmlTableElement(tableHeaders, tableData, commonChartTitle);
+                chartCanvasWrapper.appendChild(tableElement);
+                chartObjects.push({ type: 'table', element: tableElement, title: commonChartTitle});
+                chartGenerated = true;
+            } else if (chartType === 'ribbon') { 
+                downloadBtn.style.display = yAxisConfigurations.length < 1 ? 'none' : 'flex'; 
+                if (yAxisConfigurations.length < 1) { 
+                    const placeholder = document.createElement('div'); placeholder.className = 'p-4 text-center text-gray-500 border rounded-md bg-gray-50 flex items-center justify-center h-full w-full'; placeholder.innerHTML = `<div class="text-center"><p class="font-semibold mb-2">${escapeHtml(commonChartTitle)}</p><i class="fas fa-chart-area text-3xl mb-2 text-gray-400"></i><p class="text-xs">Select Y-axis for Ribbon.</p></div>`; chartCanvasWrapper.appendChild(placeholder); chartObjects.push({ type: 'placeholder', element: placeholder, title: commonChartTitle });
+                } else {
+                    const canvas = document.createElement('canvas'); chartCanvasWrapper.appendChild(canvas);
+                    let datasets = yAxisConfigurations.map((yConfig, idx) => ({ label: `${yConfig.column} (${capitalizeFirstLetter(yConfig.aggregation.replace("_", " "))})`, data: processedChartData.map(row => { const val = parseFloat(row[`${yConfig.column}_${yConfig.aggregation}`]); return isNaN(val) ? 0 : val; }), borderColor: baseColors[idx % baseColors.length].border, backgroundColor: baseColors[idx % baseColors.length].bg, fill: true, tension: 0.1 }));
+                    let ribbonApproximationTitle = `Stacked Area (Ribbon Approx.): ${yAxisDescForTitle} vs ${xAxisColumn}`;
+                    const chart = new Chart(canvas.getContext('2d'), { type: 'line', data: { labels: finalXValues, datasets: datasets }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: ribbonApproximationTitle, font: { size: 16, weight: 'bold' } }, legend: { position: 'top' }, tooltip: { mode: 'index', intersect: false } }, scales: { x: { title: { display: true, text: xAxisColumn } }, y: { stacked: true, title: { display: true, text: 'Values' } } } } });
+                    chartObjects.push({ chart: chart, title: ribbonApproximationTitle, element: canvas });
+                    downloadBtn.onclick = () => downloadChart(canvas, `${sanitizeFilename(ribbonApproximationTitle)}.png`);
+                    chartGenerated = true;
+                }
+            } else if (chartType === 'funnel') {
+                downloadBtn.style.display = 'flex';
+                const canvas = document.createElement('canvas');
+                if (!Chart.registry.controllers.get('funnel')) { downloadBtn.style.display = 'none'; const placeholder = document.createElement('div'); placeholder.className = 'p-4 text-center text-gray-500 border rounded-md bg-gray-50 flex items-center justify-center h-full w-full'; placeholder.innerHTML = `<div class="text-center"><p class="font-semibold mb-2">${escapeHtml(commonChartTitle)}</p><i class="fas fa-exclamation-triangle text-3xl mb-2 text-orange-400"></i><p class="text-xs">Funnel plugin not loaded.</p></div>`; chartCanvasWrapper.appendChild(placeholder); chartObjects.push({ type: 'placeholder', element: placeholder, title: commonChartTitle}); }
+                else if (yAxisConfigurations.length === 0) { downloadBtn.style.display = 'none'; const placeholder = document.createElement('div'); placeholder.className = 'p-4 text-center text-gray-500 border rounded-md bg-gray-50 flex items-center justify-center h-full w-full'; placeholder.innerHTML = `<p>Select Y-axis for Funnel.</p>`; chartCanvasWrapper.appendChild(placeholder); chartObjects.push({ type: 'placeholder', element: placeholder, title: commonChartTitle});}
+                else {
+                    const yConfigFunnel = yAxisConfigurations[0]; const yValueKeyFunnel = `${yConfigFunnel.column}_${yConfigFunnel.aggregation}`;
+                    let funnelChartDataUnsorted = processedChartData.map(row => ({label: String(row.xValue), value: parseFloat(row[yValueKeyFunnel])})).filter(item => !isNaN(item.value) && item.value > 0); 
+                    const funnelChartDataSorted = [...funnelChartDataUnsorted].sort((a, b) => b.value - a.value);
+                    if (funnelChartDataSorted.length === 0) { downloadBtn.style.display = 'none'; const placeholder = document.createElement('div'); placeholder.className = 'p-4 text-center text-gray-500 border rounded-md bg-gray-50 flex items-center justify-center h-full w-full'; placeholder.innerHTML = `<p>No valid data for Funnel.</p>`; chartCanvasWrapper.appendChild(placeholder); chartObjects.push({ type: 'placeholder', element: placeholder, title: commonChartTitle});}
+                    else {
+                        chartCanvasWrapper.appendChild(canvas); 
+                        try {
+                            const chart = new Chart(canvas.getContext('2d'), { type: 'funnel', data: { labels: funnelChartDataSorted.map(d => d.label), datasets: [{ label: `${yConfigFunnel.column} (${capitalizeFirstLetter(yConfigFunnel.aggregation.replace("_", " "))})`, data: funnelChartDataSorted.map(d => d.value), backgroundColor: funnelChartDataSorted.map((_, i) => baseColors[i % baseColors.length].bg), borderColor: funnelChartDataSorted.map((_, i) => baseColors[i % baseColors.length].border), borderWidth: 1 }] }, options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { title: { display: true, text: commonChartTitle, font: { size: 16, weight: 'bold' } }, legend: { display: false }, tooltip: { callbacks: { label: function(context) { let label = context.dataset.label || ''; if (label) { label += ': '; } if (context.parsed.x !== null) {  label += parseFloat(context.parsed.x).toLocaleString(); } return label; } } } } } });
+                            chartObjects.push({chart: chart, title: commonChartTitle, element: canvas});
+                            downloadBtn.onclick = () => downloadChart(canvas, `${sanitizeFilename(commonChartTitle)}.png`);
+                            chartGenerated = true;
+                        } catch (e) { downloadBtn.style.display = 'none'; chartCanvasWrapper.innerHTML = ''; const errorPlaceholder = document.createElement('div'); errorPlaceholder.className = 'p-4 text-center text-red-500 border border-red-300 rounded-md bg-red-50 flex items-center justify-center h-full w-full'; errorPlaceholder.innerHTML = `<div class="text-center"><p class="font-semibold mb-2">Error Creating Funnel</p><i class="fas fa-exclamation-circle text-3xl mb-2"></i><p class="text-xs">${escapeHtml(e.message)}</p></div>`; chartCanvasWrapper.appendChild(errorPlaceholder); chartObjects.push({ type: 'placeholder', element: errorPlaceholder, title: commonChartTitle }); }
+                    }
+                }
+            } else if (chartType === 'waterfall') {
+                downloadBtn.style.display = yAxisConfigurations.length === 0 ? 'none' : 'flex';
+                if (yAxisConfigurations.length === 0) { const placeholder = document.createElement('div'); placeholder.className = 'p-4 text-center text-gray-500 border rounded-md bg-gray-50 flex items-center justify-center h-full w-full'; placeholder.innerHTML = `<p>Select Y-axis for Waterfall.</p>`; chartCanvasWrapper.appendChild(placeholder); chartObjects.push({ type: 'placeholder', element: placeholder, title: commonChartTitle}); }
+                else {
+                    const yConfigWaterfall = yAxisConfigurations[0]; const yValueKeyWaterfall = `${yConfigWaterfall.column}_${yConfigWaterfall.aggregation}`;
+                    let runningTotal = 0; const waterfallDatasetData = []; const waterfallLabels = []; const backgroundColorsWF = []; const borderColorsWF = [];   
+                    processedChartData.forEach((row) => { const change = parseFloat(row[yValueKeyWaterfall]); if (isNaN(change)) return; const start = runningTotal; runningTotal += change; const end = runningTotal; waterfallLabels.push(row.xValue); waterfallDatasetData.push(change >= 0 ? [start, end] : [end, start]); if (change >= 0) { backgroundColorsWF.push('rgba(75, 192, 192, 0.7)'); borderColorsWF.push('rgb(75, 192, 192)'); } else { backgroundColorsWF.push('rgba(255, 99, 132, 0.7)'); borderColorsWF.push('rgb(255, 99, 132)'); } });
+                    if (waterfallDatasetData.length === 0) { downloadBtn.style.display = 'none'; const placeholder = document.createElement('div'); placeholder.className = 'p-4 text-center text-gray-500 border rounded-md bg-gray-50 flex items-center justify-center h-full w-full'; placeholder.innerHTML = `<p>No data for Waterfall.</p>`; chartCanvasWrapper.appendChild(placeholder); chartObjects.push({ type: 'placeholder', element: placeholder, title: commonChartTitle});}
+                    else {
+                        const canvas = document.createElement('canvas'); chartCanvasWrapper.appendChild(canvas);
+                        const chart = new Chart(canvas.getContext('2d'), { type: 'bar', data: { labels: waterfallLabels, datasets: [{ label: `${yConfigWaterfall.column} (${capitalizeFirstLetter(yConfigWaterfall.aggregation.replace("_", " "))})`, data: waterfallDatasetData, backgroundColor: backgroundColorsWF, borderColor: borderColorsWF, borderWidth: 1, barPercentage: 0.8, categoryPercentage: 0.7 }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: commonChartTitle, font: { size: 16, weight: 'bold' } }, legend: { display: true } }, scales: { y: { beginAtZero: false, title: { display: true, text: yConfigWaterfall.column } }, x: { title: { display: true, text: xAxisColumn } } } } });
+                        chartObjects.push({chart: chart, title: commonChartTitle, element: canvas});
+                        downloadBtn.onclick = () => downloadChart(canvas, `${sanitizeFilename(commonChartTitle)}.png`);
+                        chartGenerated = true;
+                    }
+                }
+            } else if (chartType === 'treemap') {
+                downloadBtn.style.display = 'flex'; 
+                if (!Chart.registry.controllers.get('treemap')) { downloadBtn.style.display = 'none'; const placeholder = document.createElement('div'); placeholder.className = 'p-4 text-center text-gray-500 border rounded-md bg-gray-50 flex items-center justify-center h-full w-full'; placeholder.innerHTML = `<div class="text-center"><p class="font-semibold mb-2">${escapeHtml(commonChartTitle)}</p><i class="fas fa-exclamation-triangle text-3xl mb-2 text-orange-400"></i><p class="text-xs">Treemap plugin not loaded.</p></div>`; chartCanvasWrapper.appendChild(placeholder); chartObjects.push({ type: 'placeholder', element: placeholder, title: commonChartTitle}); }
+                else if (yAxisConfigurations.length === 0) { downloadBtn.style.display = 'none'; const placeholder = document.createElement('div'); placeholder.className = 'p-4 text-center text-gray-500 border rounded-md bg-gray-50 flex items-center justify-center h-full w-full'; placeholder.innerHTML = `<p>Select Y-axis for Treemap.</p>`; chartCanvasWrapper.appendChild(placeholder); chartObjects.push({ type: 'placeholder', element: placeholder, title: commonChartTitle});}
+                else {
+                    const yConfigTreemap = yAxisConfigurations[0]; const yValueKeyTreemap = `${yConfigTreemap.column}_${yConfigTreemap.aggregation}`;
+                    const treemapTreeData = processedChartData.map((row, index) => ({ label: String(row.xValue), value: parseFloat(row[yValueKeyTreemap]), color: baseColors[index % baseColors.length].bg })).filter(item => !isNaN(item.value) && item.value > 0);
+                    if (treemapTreeData.length === 0) { downloadBtn.style.display = 'none'; const placeholder = document.createElement('div'); placeholder.className = 'p-4 text-center text-gray-500 border rounded-md bg-gray-50 flex items-center justify-center h-full w-full'; placeholder.innerHTML = `<p>No valid data for Treemap.</p>`; chartCanvasWrapper.appendChild(placeholder); chartObjects.push({ type: 'placeholder', element: placeholder, title: commonChartTitle});}
+                    else {
+                        const canvas = document.createElement('canvas'); chartCanvasWrapper.appendChild(canvas);
+                        const chart = new Chart(canvas.getContext('2d'), { type: 'treemap', data: { datasets: [{ label: `${yConfigTreemap.column} (${capitalizeFirstLetter(yConfigTreemap.aggregation.replace("_", " "))})`, tree: treemapTreeData, key: 'value', groups: ['label'],  backgroundColor: (ctx) => ctx.dataset.tree[ctx.dataIndex]?.color || baseColors[0].bg, borderColor: (ctx) => Chart.helpers.color(ctx.dataset.tree[ctx.dataIndex]?.color || baseColors[0].bg).darken(0.2).rgbString(), borderWidth: 1, spacing: 0.5,  labels: { display: true, color: 'white', font: { size: 10, weight: 'bold' }, formatter: (ctx) => { if (ctx.raw && typeof ctx.raw.v !== 'undefined') { return [ctx.raw.s, parseFloat(ctx.raw.v).toLocaleString()]; } return ctx.raw?.s || ''; } } }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: commonChartTitle, font: { size: 16, weight: 'bold' } }, legend: { display: false }, tooltip: { callbacks: { title: function() { return ''; }, label: function(context) { const item = context.dataset.tree[context.dataIndex]; return `${item.label}: ${parseFloat(item.value).toLocaleString()}`; } } } } } });
+                        chartObjects.push({chart: chart, title: commonChartTitle, element: canvas});
+                        downloadBtn.onclick = () => downloadChart(canvas, `${sanitizeFilename(commonChartTitle)}.png`);
+                        chartGenerated = true;
+                    }
+                }
+            } else if (['pie', 'doughnut', 'polarArea'].includes(chartType)) {
+                downloadBtn.style.display = 'flex'; 
+                if (yAxisConfigurations.length === 0) {
+                    downloadBtn.style.display = 'none';
+                    const placeholder = document.createElement('div'); placeholder.className = 'p-4 text-center text-gray-500 border rounded-md bg-gray-50 flex items-center justify-center h-full w-full'; placeholder.innerHTML = `<p>Select Y-axis for ${chartType}.</p>`; chartCanvasWrapper.appendChild(placeholder); chartObjects.push({ type: 'placeholder', element: placeholder, title: commonChartTitle});
+                } else {
+                    const yConfig = yAxisConfigurations[0]; 
+                    const currentCanvas = document.createElement('canvas'); chartCanvasWrapper.appendChild(currentCanvas);
+                    const yDataForChart = processedChartData.map(row => row[`${yConfig.column}_${yConfig.aggregation}`]).filter(val => typeof val === 'number' && !isNaN(val) && val !== null);
+                    const xLabelsForChart = finalXValues.filter((xv, i) => { const val = processedChartData[i][`${yConfig.column}_${yConfig.aggregation}`]; return typeof val === 'number' && !isNaN(val) && val !== null; });
+                    const specificChartTitle = `${capitalizeFirstLetter(chartType)}: ${yConfig.column} (${capitalizeFirstLetter(yConfig.aggregation.replace("_", " "))}) by ${xAxisColumn}`;
+                    
+                    if (yDataForChart.length === 0) { 
+                        downloadBtn.style.display = 'none'; 
+                        const placeholder = document.createElement('div'); placeholder.className = 'p-4 text-center text-gray-500 border rounded-md bg-gray-50 flex items-center justify-center h-full w-full'; placeholder.innerHTML = `<p>No data for ${specificChartTitle}.</p>`; chartCanvasWrapper.innerHTML = ''; chartCanvasWrapper.appendChild(placeholder); chartObjects.push({ type: 'placeholder', element: placeholder, title: specificChartTitle });
+                    } else {
+                        const chart = new Chart(currentCanvas.getContext('2d'), { 
+                            type: chartType, data: { labels: xLabelsForChart, datasets: [{ label: `${yConfig.column} (${capitalizeFirstLetter(yConfig.aggregation.replace("_", " "))})`, data: yDataForChart, backgroundColor: xLabelsForChart.map((_, i) => baseColors[i % baseColors.length].bg), borderColor: xLabelsForChart.map((_, i) => baseColors[i % baseColors.length].border), borderWidth: 1 }] },
+                            options: { responsive: true, maintainAspectRatio: false, plugins: { title: { display: true, text: specificChartTitle, font: { size: 16, weight: 'bold' } }, legend: { position: 'right', labels: {boxWidth: 20, padding: 15, font: {size:10}} } } }
+                        });
+                        chartObjects.push({chart: chart, title: specificChartTitle, element: currentCanvas});
+                        downloadBtn.onclick = () => downloadChart(currentCanvas, `${sanitizeFilename(specificChartTitle)}.png`);
+                        chartGenerated = true;
+                    }
+                }
+            } else { // bar, line, scatter
+                downloadBtn.style.display = yAxisConfigurations.length === 0 ? 'none' : 'flex';
+                if (yAxisConfigurations.length === 0) { 
+                    const placeholder = document.createElement('div'); placeholder.className = 'p-4 text-center text-gray-500 border rounded-md bg-gray-50 flex items-center justify-center h-full w-full'; placeholder.innerHTML = `<p>Select Y-axis for ${chartType}.</p>`; chartCanvasWrapper.appendChild(placeholder); chartObjects.push({ type: 'placeholder', element: placeholder, title: commonChartTitle});
+                } else {
+                    const canvas = document.createElement('canvas'); chartCanvasWrapper.appendChild(canvas);
+                    let datasets = yAxisConfigurations.map((yConfig, idx) => { 
+                        let yDataPoints;
+                        if (yConfig.aggregation === 'value' && chartType === 'scatter') {
+                            yDataPoints = [];
+                            dataSource.forEach(originalRow => { 
+                                const xVal = tryParseFloat(originalRow[xAxisColumn]); const yVal = parseFloat(originalRow[yConfig.column]);
+                                if ((typeof xVal === 'number' || typeof xVal === 'string') && xVal !== null && !isNaN(yVal)) { yDataPoints.push({x: xVal, y: yVal}); }
+                            });
+                        } else {
+                            yDataPoints = processedChartData.map(row => row[`${yConfig.column}_${yConfig.aggregation}`]);
+                        }
+                        return { label: `${yConfig.column} (${capitalizeFirstLetter(yConfig.aggregation.replace("_", " "))})`, data: yDataPoints, backgroundColor: baseColors[idx % baseColors.length].bg, borderColor: baseColors[idx % baseColors.length].border, borderWidth: chartType === 'scatter' ? 5 : (chartType === 'line' ? 2 : 1), fill: chartType === 'line' ? false : (chartType !== 'scatter'), tension: chartType === 'line' ? 0.1 : 0 };
+                    });
+                    let isXNumericForScatter = (chartType === 'scatter' && datasets.length > 0 && datasets[0].data.every(p => typeof p.x === 'number' && !isNaN(p.x)));
+                    let chartSpecificOptions = { scales: {  x: { title: { display: true, text: xAxisColumn, font: {size: 14, weight: 'medium'}}, grid: { display: false }, type: isXNumericForScatter ? 'linear' : 'category' }, y: { title: { display: true, text: (yAxisDescForTitle.length > 40 ? "Values" : yAxisDescForTitle) , font: {size: 14, weight: 'medium'}}, beginAtZero: true }  }, plugins: { legend: { position: 'top', labels: { font: {size: 12 }} } } };
+                    let labelsForChart = (chartSpecificOptions.scales.x.type === 'category') ? finalXValues : undefined;
+
+                    const chart = new Chart(canvas.getContext('2d'), {
+                        type: chartType, data: { labels: labelsForChart, datasets: datasets },
+                        options: { responsive: true, maintainAspectRatio: false, ...chartSpecificOptions, plugins: { ...chartSpecificOptions.plugins, title: { display: true, text: commonChartTitle, font: { size: 16, weight: 'bold' } } } }
+                    });
+                    chartObjects.push({chart: chart, title: commonChartTitle, element: canvas});
+                    downloadBtn.onclick = () => downloadChart(canvas, `${sanitizeFilename(commonChartTitle)}.png`);
+                    chartGenerated = true;
+                }
+            }
+            
+            if (chartItemWrapper.style.display !== 'none' && (chartGenerated || chartCanvasWrapper.querySelector('.p-4.text-center'))) {
+                targetChartContainer.appendChild(chartItemWrapper);
+                return true; 
+            }
+            return false; 
+        }
+
+        // MODIFIED renderChartsInModal (for manual visualization)
+        function renderChartsInModal(targetChartContainer, chartTypesToRender, xAxisColumn, yAxisConfigurations, dataSource, allColHeaders, resultModalElement, downloadAllButtonElement) {
+            targetChartContainer.innerHTML = ''; 
+            
+            let anyChartGenerated = false;
+            chartTypesToRender.forEach(chartType => { 
+                const chartRendered = generateAndAppendChartFromConfig({
+                    targetChartContainer,
+                    chartType,
+                    xAxisColumn,
+                    yAxisConfigurations,
+                    dataSource,
+                    allColHeaders
+                });
+                if (chartRendered) anyChartGenerated = true;
+            });
+
+            if (anyChartGenerated) {
+                resultModalElement.classList.remove('hidden');
+                if (downloadAllButtonElement) downloadAllButtonElement.classList.remove('hidden');
+            } else {
+                showNotification("Could not generate any visualizations or placeholders with the provided configuration.", "warning");
+                if (downloadAllButtonElement) downloadAllButtonElement.classList.add('hidden');
+                targetChartContainer.innerHTML = `<div class="col-span-full text-center py-10 text-gray-500"><p>No charts could be generated.</p></div>`;
+                resultModalElement.classList.remove('hidden'); 
+            }
+        }
+
+        function clearAllChartsGlobally() {
+            chartObjects.forEach(obj => {
+                if (obj.chart && typeof obj.chart.destroy === 'function') {
+                    obj.chart.destroy();
+                }
+            });
+            chartObjects = [];
+            if (configuredVizChartContainer) configuredVizChartContainer.innerHTML = '';
+            if (aiVizChartContainer) aiVizChartContainer.innerHTML = '';
+            
+            const mainChartSection = document.getElementById('chartSection');
+            const noChartMsgContainer = document.getElementById('noChartMessageContainer');
+            if(mainChartSection && noChartMsgContainer) {
+                 noChartMsgContainer.classList.remove('hidden');
+                 mainChartSection.classList.add('hidden'); 
+            }
+
+            if(downloadAllConfiguredGraphsButton) downloadAllConfiguredGraphsButton.classList.add('hidden');
+            if(downloadAllAiGraphsButton) downloadAllAiGraphsButton.classList.add('hidden');
+        }
+
+        function capitalizeFirstLetter(string) { return string.charAt(0).toUpperCase() + string.slice(1); }
+        function tryParseFloat(value) { const num = parseFloat(value); return isNaN(num) ? value : num; }
+        function sanitizeFilename(name) { return name.replace(/[^a-z0-9_ \.,\-\(\)]/gi, '_').replace(/\s+/g, '_'); }
+
+        analyzeDataButton.addEventListener('click', async () => { 
+            if (!currentSessionId || !currentUploadedFilePath) { showNotification("Please upload or import data first.", "warning"); return; }
+            showLoading("Analyzing data...");
+            try {
+                const procRes = await fetch(`${API_BASE_URL}/api/process/${currentSessionId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ file_path: currentUploadedFilePath }) });
+                if (!procRes.ok) { const err = await procRes.json().catch(()=>({error: "Analysis request failed."})); throw new Error(err.error || `HTTP error: ${procRes.status}`); }
+                const procResult = await procRes.json();
+                if (procResult.success) {
+                    const resultRes = await fetch(`${API_BASE_URL}/api/result/${currentSessionId}`);
+                    if (!resultRes.ok) { const err = await resultRes.json().catch(()=>({error: "Failed to fetch analysis result."})); throw new Error(err.error || `HTTP error: ${resultRes.status}`); }
+                    const resultData = await resultRes.json();
+                    if (resultData.success) {
+                        displayResultsInModal('Data Analysis Result', resultData.is_markdown && resultData.html_content ? resultData.html_content : resultData.full_content, true, resultData.filename, resultData.is_markdown && resultData.html_content);
+                        showNotification("Data analysis complete.", "success");
+                    } else { throw new Error(resultData.full_content || resultData.message || "Analysis completed, but no content."); }
+                } else { throw new Error(procResult.message || "Analysis process failed."); }
+            } catch (error) {
+                console.error("Analysis error:", error); showNotification(`Analysis failed: ${error.message}`, "error");
+                displayResultsInModal('Analysis Error', `An error occurred: ${error.message}`, false, null, false);
+            } finally { hideLoading(); }
+        });
+
+        askQuestionButton.addEventListener('click', () => { 
+            if (!currentSessionId) { showNotification("Please upload or import data first.", "warning"); return; }
+            questionInput.value = ''; questionEnhanceArea.classList.add('hidden'); questionEnhanceArea.innerHTML = '';
+            askQuestionModal.classList.remove('hidden');
+        });
+        closeAskModalButton.addEventListener('click', () => askQuestionModal.classList.add('hidden'));
+        askQuestionModal.addEventListener('click', (event) => { if (event.target === askQuestionModal) askQuestionModal.classList.add('hidden'); });
+
+        submitQuestionButton.addEventListener('click', async () => { 
+            const question = questionInput.value.trim();
+            if (!question) { showNotification("Please enter a question.", "warning"); return; }
+            if (!currentSessionId) { showNotification("Session ID missing. Re-upload/import data.", "error"); return; }
+            showLoading("Submitting question..."); askQuestionModal.classList.add('hidden');
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/ask-question/${currentSessionId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: question }) });
+                const result = await response.json();
+                let modalTitle = result.success ? `Answer to: "${escapeHtml(question.substring(0,50))}..."` : `Issue with: "${escapeHtml(question.substring(0,50))}..."`;
+                if (!result.success && result.message && !result.html_content) { modalTitle = `Error: ${result.message}`; }
+                displayResultsInModal(modalTitle, result.html_content || result.message || "No specific content returned.", result.filename ? true : false, result.filename, !!result.html_content);
+                showNotification(result.message || (result.success ? "Answer received." : "Processed with issues."), result.success ? "success" : (result.filename ? "warning" : "error"));
+            } catch (error) {
+                console.error("Ask question error:", error); showNotification(`Error asking question: ${error.message}`, "error");
+                displayResultsInModal('Question Processing Error', `An unexpected error: ${error.message}`, false, null, false);
+            } finally { hideLoading(); }
+        });
+        
+        closeResultsModalButton.addEventListener('click', () => resultsModal.classList.add('hidden'));
+        resultsModal.addEventListener('click', (event) => { if (event.target === resultsModal) resultsModal.classList.add('hidden');});
+        downloadResultButton.addEventListener('click', () => { 
+            if (currentSessionId && currentResultFileNameForDownload) {
+                let downloadSessionId = currentSessionId;
+                if (currentResultFileNameForDownload.startsWith("Answer_To_Q_")) {
+                    const match = currentResultFileNameForDownload.match(/Answer_To_Q_([^_]+)_Sess_([^_.]+)/);
+                    if (match && match[1] && match[2]) { downloadSessionId = `${match[2]}_q${match[1]}`; } 
+                    else if (currentSessionId.includes("_q")) { downloadSessionId = currentSessionId; }
+                }
+                const downloadUrl = `${API_BASE_URL}/api/download/${downloadSessionId}/${currentResultFileNameForDownload}`;
+                const a = document.createElement('a'); a.href = downloadUrl; a.download = currentResultFileNameForDownload;
+                document.body.appendChild(a); a.click(); document.body.removeChild(a);
+                showNotification("Download started.", "info");
+            } else { showNotification("Could not download. Session/filename missing.", "error"); }
+        });
+
+        function displayEnhancementResults(areaElement, originalInput, enhancedInput, targetTextarea) { 
+            areaElement.innerHTML = `
+                <p><strong>Original:</strong></p>
+                <p class="original-text-display mb-2">${escapeHtml(originalInput)}</p>
+                <p><strong>Suggested:</strong></p>
+                <p class="suggested-text-display mb-3">${escapeHtml(enhancedInput)}</p>
+                <div class="buttons text-right">
+                    <button class="use-suggested-btn bg-green-500 hover:bg-green-600 text-white">Use Suggested</button>
+                    <button class="cancel-enhance-btn bg-gray-400 hover:bg-gray-500 text-white">Cancel</button>
+                </div>
+            `;
+            areaElement.classList.remove('hidden');
+            areaElement.querySelector('.use-suggested-btn').addEventListener('click', () => {
+                targetTextarea.value = enhancedInput;
+                areaElement.classList.add('hidden'); areaElement.innerHTML = '';
+            });
+            areaElement.querySelector('.cancel-enhance-btn').addEventListener('click', () => {
+                areaElement.classList.add('hidden'); areaElement.innerHTML = '';
+            });
+        }
+
+        async function handleEnhanceGeneric(textareaElement, displayAreaElement, apiUrl, inputKey, originalKey, enhancedKey, sessionId) { 
+            const rawInput = textareaElement.value.trim();
+            if (!rawInput) {
+                showNotification("Please type your input first.", "warning");
+                return;
+            }
+            showLoading("Enhancing input...");
+            displayAreaElement.classList.add('hidden');
+            displayAreaElement.innerHTML = '';
+
+            const payload = {};
+            payload[inputKey] = rawInput;
+            
+            // Add session_id to payload if provided
+            if (sessionId) {
+                payload['session_id'] = sessionId;
+            }
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const result = await response.json();
+                if (!response.ok || !result.success) {
+                    throw new Error(result.error || `API error: ${response.status}`);
+                }
+                displayEnhancementResults(displayAreaElement, result[originalKey], result[enhancedKey], textareaElement);
+                showNotification("Input suggestion received.", "success");
+            } catch (error) {
+                console.error("Enhance input error:", error);
+                showNotification(`Failed to enhance input: ${error.message}`, "error");
+                displayAreaElement.innerHTML = `<p class="text-red-500 text-sm p-2">Error: ${escapeHtml(error.message)}</p>`;
+                displayAreaElement.classList.remove('hidden');
+                setTimeout(() => {
+                    if (displayAreaElement.innerHTML.includes("Error:")) {
+                        displayAreaElement.classList.add('hidden');
+                        displayAreaElement.innerHTML = '';
+                    }
+                }, 5000);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        if (enhanceQuestionBtn) { 
+            enhanceQuestionBtn.addEventListener('click', () => handleEnhanceGeneric(questionInput, questionEnhanceArea, `${API_BASE_URL}/api/enhance-prompt`, 'prompt', 'original_prompt', 'enhanced_prompt')); 
+        }
+        if (enhanceAiVizBtn) { 
+            enhanceAiVizBtn.addEventListener('click', () => handleEnhanceGeneric(aiVizPrompt, aiVizEnhanceArea, `${API_BASE_URL}/api/enhance-prompt`, 'prompt', 'original_prompt', 'enhanced_prompt')); 
+        }
+        if (enhanceSqlQueryBtn) { 
+            enhanceSqlQueryBtn.addEventListener('click', () => {
+                // Modify this line to include session_id in the request
+                handleEnhanceGeneric(
+                    sqlQueryInput, 
+                    sqlQueryEnhanceArea, 
+                    `${API_BASE_URL}/api/enhance-sql`, 
+                    'sql_query', 
+                    'original_sql_query', 
+                    'enhanced_sql_query',
+                    currentSessionId  // Pass the current session ID
+                );
+            });
+        }
+
+        function escapeHtml(unsafe) { 
+            if (typeof unsafe !== 'string') { console.warn("escapeHtml called with non-string value:", unsafe); return String(unsafe); }
+            return unsafe.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+        }
+
+        // --- AI Visualization (MODIFIED for JSON Config from Backend) ---
+        aiVizButton.addEventListener('click', () => {
+            if (!parsedData || parsedData.length === 0 || !columnHeaders || columnHeaders.length === 0) {
+                showNotification("No data loaded. Upload/import data first.", "warning"); return;
+            }
+            aiVizPrompt.value = ''; aiVizEnhanceArea.classList.add('hidden'); aiVizEnhanceArea.innerHTML = '';
+            aiVizModal.classList.remove('hidden');
+        });
+        closeAiVizModalButton.addEventListener('click', () => aiVizModal.classList.add('hidden'));
+        aiVizModal.addEventListener('click', (event) => { if (event.target === aiVizModal) aiVizModal.classList.add('hidden'); });
+        
+        if (closeAiVizResultModalButton) {
+            closeAiVizResultModalButton.addEventListener('click', function() {
+                aiVizResultModal.classList.add('hidden');
+            });
+        }
+
+        if (closeConfiguredVizResultModalButton) {
+            closeConfiguredVizResultModalButton.addEventListener('click', function() {
+                configuredVizResultModal.classList.add('hidden');
+            });
+        }
+
+        if (aiVizResultModal) {
+            aiVizResultModal.addEventListener('click', function(event) {
+                if (event.target === aiVizResultModal) {
+                    aiVizResultModal.classList.add('hidden');
+                }
+            });
+        }
+
+        if (configuredVizResultModal) {
+            configuredVizResultModal.addEventListener('click', function(event) {
+                if (event.target === configuredVizResultModal) {
+                    configuredVizResultModal.classList.add('hidden');
+                }
+            });
+        }
+
+
+
+        const AI_AGGREGATION_MAP = {
+            "Value (Raw)": "value", "Raw Value": "value", "Actual Value": "value",
+            "Sum": "sum", "Total": "sum",
+            "Average": "avg", "Mean": "avg",
+            "Minimum": "min", "Min": "min",
+            "Maximum": "max", "Max": "max",
+            "Count": "count",
+            "Count (Distinct)": "count_distinct", "Distinct Count": "count_distinct", "Unique Count": "count_distinct",
+            "Median": "median",
+            "Standard Deviation": "stddev", "StdDev": "stddev",
+            "Variance": "variance"
+        };
+        function mapAiAggregationToInternal(aiAggregationName) {
+            return AI_AGGREGATION_MAP[aiAggregationName] || aiAggregationName.toLowerCase(); 
+        }
+        function mapAiChartTypeToInternal(aiChartType) {
+            const type = aiChartType.toLowerCase().replace(" chart", "").replace(" diagram", "").replace(" graph", "");
+            const commonTypes = ["bar", "line", "scatter", "pie", "doughnut", "polararea", "table", "matrix", "ribbon", "waterfall", "funnel", "treemap"];
+            if (commonTypes.includes(type)) return type;
+            if (type === "stacked area") return "ribbon"; 
+            
+            showNotification(`AI suggested chart type "${aiChartType}" might not be fully supported or mapped. Attempting direct use: "${type}".`, "warning");
+            return type; 
+        }
+
+        
+        submitAiVizButton.addEventListener('click', async () => {
+            const prompt = aiVizPrompt.value.trim();
+            if (!prompt) { showNotification("Please describe the visualization.", "warning"); return; }
+            if (!currentSessionId) { showNotification("Session ID missing. Re-upload/import data.", "error"); return; }
+            
+            showLoading("Getting AI visualization suggestion(s)..."); 
+            aiVizModal.classList.add('hidden');
+            
+            clearAllChartsGlobally(); 
+            aiVizChartContainer.innerHTML = ''; 
+            aiVizResultText.innerHTML = ''; 
+            aiVizResultText.classList.add('hidden'); 
+            downloadAllAiGraphsButton.classList.add('hidden');
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/ai-visualization`, {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: currentSessionId, user_prompt: prompt })
+                });
+                
+                hideLoading(); 
+
+                if (!response.ok) { 
+                    const errText = await response.text();
+                    let err = { message: `HTTP error: ${response.status}`};
+                    try { err = JSON.parse(errText); } catch (e) { err.rawError = errText; }
+                    throw new Error(err.error || err.message || `HTTP error: ${response.status}`); 
+                }
+                
+                const result = await response.json();
+
+                if (result.success && result.chart_config) {
+                    const aiConfigs = Array.isArray(result.chart_config) ? result.chart_config : [result.chart_config];
+                    aiVizResultTitle.textContent = `AI Suggested Visualization(s)`;
+                    
+                    if (aiConfigs.length === 0) {
+                        showNotification("AI returned empty chart configurations.", "warning");
+                        aiVizChartContainer.innerHTML = `<div class="col-span-full text-center py-10 text-gray-500"><p>AI returned no chart suggestions.</p></div>`;
+                        aiVizResultModal.classList.remove('hidden');
+                        return;
+                    }
+
+                    let chartsRenderedSuccessfully = 0;
+
+                    for (let i = 0; i < aiConfigs.length; i++) {
+                        const aiConfig = aiConfigs[i];
+                        console.log(`Processing AI Config ${i + 1}:`, JSON.parse(JSON.stringify(aiConfig)));
+
+                        try { 
+                            if (!aiConfig.chart_type || !aiConfig.x_axis || !aiConfig.y_axis || !Array.isArray(aiConfig.y_axis) ) { 
+                                if (!['table', 'matrix'].includes(mapAiChartTypeToInternal(aiConfig.chart_type)) && aiConfig.y_axis.length === 0) {
+                                    showNotification(`AI Config ${i+1} is incomplete (missing y_axis for non-table/matrix). Skipping.`, "warning", 7000);
+                                    console.warn("Incomplete AI chart config (y_axis):", aiConfig);
+                                    continue;
+                                } else if (['table', 'matrix'].includes(mapAiChartTypeToInternal(aiConfig.chart_type)) && aiConfig.y_axis.length === 0) {
+                                    if(!aiConfig.x_axis && !aiConfig.y_axis.length > 0){ 
+                                        showNotification(`AI Config ${i+1} for Table/Matrix is incomplete (missing x_axis and y_axis). Skipping.`, "warning", 7000);
+                                        console.warn("Incomplete AI chart config (Table/Matrix - no x or y):", aiConfig);
+                                        continue;
+                                    }
+                                } else if (aiConfig.y_axis.length === 0 && !['table', 'matrix'].includes(mapAiChartTypeToInternal(aiConfig.chart_type))) {
+                                    showNotification(`AI Config ${i+1} (Type: ${aiConfig.chart_type}) has no Y-axis definitions. Skipping.`, "warning", 7000);
+                                    console.warn("Empty y_axis for non-table/matrix config:", aiConfig);
+                                    continue;
+                                }
+                            }
+
+                            
+                            const chartTypeInternal = mapAiChartTypeToInternal(aiConfig.chart_type);
+                            const xAxisInternal = aiConfig.x_axis; 
+                            
+                            let yAxisConfigsInternal = [];
+                            if(aiConfig.y_axis && Array.isArray(aiConfig.y_axis)){ 
+                                yAxisConfigsInternal = aiConfig.y_axis.map(yc => ({
+                                    column: yc.column,
+                                    aggregation: mapAiAggregationToInternal(yc.aggregation)
+                                })).filter(yc => columnHeaders.includes(yc.column) || chartTypeInternal === 'table' || chartTypeInternal === 'matrix'); 
+                            }
+
+                            if (!xAxisInternal && !['pie', 'doughnut', 'polarArea', 'table', 'matrix', 'treemap', 'funnel'].includes(chartTypeInternal)) { 
+                                showNotification(`For AI Config ${i+1} (Type: ${aiConfig.chart_type}), X-axis is missing. Skipping.`, "warning", 7000);
+                                console.warn(`X-axis missing for config:`, aiConfig);
+                                continue;
+                            }
+                            if (xAxisInternal && !columnHeaders.includes(xAxisInternal) && !['table', 'matrix'].includes(chartTypeInternal)) { 
+                                showNotification(`For AI Config ${i+1} (Type: ${aiConfig.chart_type}), X-axis "${xAxisInternal}" not in dataset. Skipping.`, "warning", 7000);
+                                console.warn(`X-axis ${xAxisInternal} not found for config:`, aiConfig);
+                                continue;
+                            }
+                            
+                            if (yAxisConfigsInternal.length === 0 && aiConfig.y_axis && aiConfig.y_axis.length > 0 && !['table', 'matrix'].includes(chartTypeInternal)) {
+                                showNotification(`For AI Config ${i+1} (Type: ${aiConfig.chart_type}), suggested Y-axes not in dataset. Original: ${aiConfig.y_axis.map(y=>y.column).join(', ')}. Skipping.`, "warning", 7000);
+                                console.warn(`Y-axes not found for config:`, aiConfig);
+                                continue;
+                            }
+                            if (yAxisConfigsInternal.length === 0 && !['table', 'matrix'].includes(chartTypeInternal) ) { 
+                                showNotification(`For AI Config ${i+1} (Type: ${aiConfig.chart_type}), no valid Y-axes. Skipping.`, "warning", 7000);
+                                console.warn(`No valid Y-axes for config:`, aiConfig);
+                                continue;
+                            }
+
+                            const chartRendered = generateAndAppendChartFromConfig({
+                                targetChartContainer: aiVizChartContainer,
+                                chartType: chartTypeInternal,
+                                xAxisColumn: xAxisInternal, 
+                                yAxisConfigurations: yAxisConfigsInternal,
+                                dataSource: parsedData,
+                                allColHeaders: columnHeaders
+                            });
+
+                            if (chartRendered) {
+                                chartsRenderedSuccessfully++;
+                                console.log(`Successfully attempted to render chart for AI Config ${i + 1}`);
+                            } else {
+                                console.warn(`Failed to render chart for AI Config ${i + 1} (generateAndAppendChartFromConfig returned false)`);
+                                if(!aiVizChartContainer.querySelector(`.chart-item-wrapper[data-config-index="${i}"]`)){ 
+                                    const errorWrapper = document.createElement('div');
+                                    errorWrapper.className = 'chart-item-wrapper p-4 text-orange-500 border border-orange-300 rounded-md bg-orange-50';
+                                    errorWrapper.dataset.configIndex = i;
+                                    errorWrapper.innerHTML = `<p class="font-semibold">Chart generation skipped or failed for: ${escapeHtml(aiConfig.chart_type)}</p><p class="text-xs">Configuration might be unsuitable.</p>`;
+                                    aiVizChartContainer.appendChild(errorWrapper);
+                                }
+                            }
+                        } catch (e) {
+                            console.error(`Error processing AI Config ${i + 1} (Type: ${aiConfig.chart_type}):`, e);
+                            showNotification(`Error rendering one of the AI suggested charts (Type: ${aiConfig.chart_type}). See console.`, "error", 7000);
+                            const errorWrapper = document.createElement('div');
+                            errorWrapper.className = 'chart-item-wrapper p-4 text-red-500 border border-red-300 rounded-md bg-red-50';
+                            errorWrapper.dataset.configIndex = i;
+                            errorWrapper.innerHTML = `<p class="font-semibold">Error rendering chart: ${escapeHtml(aiConfig.chart_type)}</p><p class="text-xs">${escapeHtml(e.message)}</p>`;
+                            aiVizChartContainer.appendChild(errorWrapper);
+                        }
+                    } 
+
+                    if (chartsRenderedSuccessfully > 0 || aiVizChartContainer.children.length > 0) { 
+                        showNotification(`AI suggestions processed (${aiConfigs.length} configurations attempted).`, chartsRenderedSuccessfully > 0 ? "success" : "warning");
+                        aiVizResultModal.classList.remove('hidden');
+                        if(chartsRenderedSuccessfully > 0) downloadAllAiGraphsButton.classList.remove('hidden');
+                    } else {
+                        showNotification("No valid AI chart configurations could be rendered.", "warning");
+                        aiVizChartContainer.innerHTML = `<div class="col-span-full text-center py-10 text-gray-500"><p>No valid AI chart configurations could be rendered from the response.</p></div>`;
+                        aiVizResultModal.classList.remove('hidden'); 
+                        downloadAllAiGraphsButton.classList.add('hidden');
+                    }
+                } else { 
+                    throw new Error(result.message || "AI visualization suggestion failed or returned invalid/empty config.");
+                }
+            } catch (error) { 
+                hideLoading();
+                console.error("AI visualization error:", error); 
+                showNotification(`AI visualization failed: ${error.message}`, "error");
+                aiVizResultTitle.textContent = "AI Visualization Error";
+                aiVizChartContainer.innerHTML = `<div class="p-4 bg-red-100 border border-red-300 text-red-700 rounded-md"><p class="font-semibold">Error</p><p>${escapeHtml(error.message)}</p></div>`;
+                aiVizResultModal.classList.remove('hidden');
+            }
+        });
+
+        // --- Download All Buttons for Modals ---
+        if(downloadAllConfiguredGraphsButton) {
+            downloadAllConfiguredGraphsButton.addEventListener('click', () => {
+                downloadAllChartsFromContainer(configuredVizChartContainer, 'Configured_Chart');
+            });
+        }
+        if(downloadAllAiGraphsButton) {
+            downloadAllAiGraphsButton.addEventListener('click', () => {
+                downloadAllChartsFromContainer(aiVizChartContainer, 'AI_Suggested_Chart');
+            });
+        }
+
+        function downloadAllChartsFromContainer(containerElement, baseFilename = 'Chart') {
+            const chartWrappers = containerElement.querySelectorAll('.chart-item-wrapper');
+            let canvasesDownloaded = 0;
+            chartWrappers.forEach((wrapper, index) => {
+                const canvas = wrapper.querySelector('canvas');
+                const img = wrapper.querySelector('img'); 
+                const tableDiv = wrapper.querySelector('.generated-html-table'); 
+
+                let chartElementToDownload = canvas || img;
+                let chartTitle = `${baseFilename}_${index + 1}`;
+
+                if (chartElementToDownload) {
+                    if (canvas) {
+                        const chartInstance = Chart.getChart(canvas);
+                        if(chartInstance && chartInstance.options && chartInstance.options.plugins && chartInstance.options.plugins.title && chartInstance.options.plugins.title.text) {
+                            chartTitle = chartInstance.options.plugins.title.text;
+                        }
+                    } else if (img) { 
+                        chartTitle = img.alt || img.dataset.title || chartTitle;
+                    }
+                    
+                    setTimeout(() => {
+                        downloadChart(chartElementToDownload, `${sanitizeFilename(chartTitle)}.png`);
+                    }, index * 300);
+                    canvasesDownloaded++;
+                } else if (tableDiv) {
+                    console.log(`Skipping download for table: ${tableDiv.caption ? tableDiv.caption.textContent : 'Untitled Table'}`);
+                }
+            });
+
+            if (canvasesDownloaded > 0) {
+                showNotification(`Downloading ${canvasesDownloaded} chart(s)...`, "success");
+            } else {
+                showNotification("No canvas-based or image charts to download from this view.", "info");
+            }
+        }
+
+
+
+        // --- SQL Query Feature ---
+
+        sqlQueryButton.addEventListener('click', () => {
+            if (!parsedData || parsedData.length === 0 || !columnHeaders || columnHeaders.length === 0) {
+                showNotification("No data loaded. Upload/import data first.", "warning");
+                return;
+            }
+            
+            let tableName = 'data_table';
+            if (currentUploadedFilename) {
+                // Use the stored filename (works for both file uploads and PostgreSQL imports)
+                tableName = currentUploadedFilename.split('.')[0].replace(/[^a-zA-Z0-9_]/g, '_');
+            } else if (currentUploadedFile && currentUploadedFile.name) {
+                // Fallback to the file object if available
+                tableName = currentUploadedFile.name.split('.')[0].replace(/[^a-zA-Z0-9_]/g, '_');
+            }
+            
+            sqlQueryInput.value = `SELECT * FROM ${tableName} LIMIT 10;`; // Default query
+            sqlQueryEnhanceArea.classList.add('hidden'); sqlQueryEnhanceArea.innerHTML = ''; 
+            sqlQueryModal.classList.remove('hidden');
+        });
+
+        closeSqlQueryModalButton.addEventListener('click', () => sqlQueryModal.classList.add('hidden'));
+        sqlQueryModal.addEventListener('click', (event) => { 
+            if (event.target === sqlQueryModal) sqlQueryModal.classList.add('hidden'); 
+        });
+
+        executeSqlButton.addEventListener('click', async () => {
+            const sqlQuery = sqlQueryInput.value.trim();
+            if (!sqlQuery) {
+                showNotification("Please enter an SQL query.", "warning");
+                return;
+            }
+            
+            if (!currentSessionId) {
+                showNotification("Session ID missing. Re-upload/import data.", "error");
+                return;
+            }
+            
+            showLoading("Executing SQL query...");
+            sqlQueryModal.classList.add('hidden');
+            
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/execute-sql`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        session_id: currentSessionId, 
+                        sql_query: sqlQuery 
+                    })
+                });
+                
+                // Check if the response was not OK (e.g., 400 for bad SQL, 500 for server error)
+                if (!response.ok) {
+                    const errorResult = await response.json().catch(() => ({ 
+                        message: `Request failed with status: ${response.status}. No further details available.`,
+                        html_content: null // Ensure html_content exists for the display function
+                    }));
+                    
+                    // Display the error from the backend (which might be HTML formatted)
+                    displayResultsInModal(
+                        'SQL Query Error', 
+                        errorResult.html_content || errorResult.message || `Error: ${response.statusText}`, 
+                        false, 
+                        null, 
+                        !!errorResult.html_content // Use HTML if provided
+                    );
+                    showNotification(errorResult.message || "SQL query execution failed.", "error");
+                } else {
+                    // If response is OK (200), then SQL execution was successful (or returned empty)
+                    const result = await response.json(); // Should always be JSON if response.ok
+                    if (result.success) { // Backend confirms SQL execution logic was successful
+                        displayResultsInModal(
+                            'SQL Query Results', 
+                            result.html_content || result.full_content, 
+                            false, 
+                            null, 
+                            !!result.html_content
+                        );
+                        showNotification(result.message || "SQL query executed successfully.", "success");
+                    } else {
+                        // This case might occur if backend sends 200 OK but success:false (less common for this endpoint now)
+                        displayResultsInModal(
+                            'SQL Query Information', 
+                            result.html_content || result.message || "Query processed with an issue.",
+                            false, 
+                            null, 
+                            !!result.html_content
+                        );
+                        showNotification(result.message || "Query processed with an issue.", "warning");
+                    }
+                }
+            } catch (error) { // Catch network errors or other JS errors during fetch/processing
+                console.error("SQL query error (outer catch):", error);
+                showNotification(`SQL query failed: ${error.message}`, "error");
+                displayResultsInModal('SQL Query Error', `An unexpected error occurred: ${error.message}`, false, null, false);
+            } finally {
+                hideLoading();
+            }
+        });
+        
+        // Define processing_results if it's used globally and not defined elsewhere
+        // This is a placeholder; actual initialization might depend on your app's logic
+        let processing_results = {}; 
+
+
+        // --- Initial Setup ---
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('currentYear').textContent = new Date().getFullYear();
+            checkLoginState();
+            setupLoginListeners();
+            resetFileState(true);
+            const mainChartSection = document.getElementById('chartSection');
+            if(mainChartSection) mainChartSection.classList.add('hidden');
+
+            // Ensure yAxisCheckboxContainer related elements in configModal are correctly styled for focus
+             const yAxisCheckboxesInConfig = document.querySelectorAll('#configModal #yAxisCheckboxContainer input[type="checkbox"]');
+             yAxisCheckboxesInConfig.forEach(cb => {
+                cb.classList.add('text-feature', 'focus:ring-[#ff6363]');
+             });
+        });
+
+
+    </script>
+</body>
+</html>
